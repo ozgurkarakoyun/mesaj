@@ -9,476 +9,81 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
 :root {
-  --bg: #0a0a0f;
-  --surface: #111118;
-  --surface2: #16161f;
-  --border: #1e1e2e;
-  --accent: #7c6af7;
-  --accent2: #f7a6c4;
-  --text: #e8e6f0;
-  --muted: #5a5870;
-  --success: #6af7c4;
-  --error: #ff6b8a;
-  --msg-own: #1a1a2e;
-  --msg-other: #141420;
+  --bg:#0a0a0f; --surface:#111118; --surface2:#16161f; --border:#1e1e2e;
+  --accent:#7c6af7; --accent2:#f7a6c4; --text:#e8e6f0; --muted:#6f6c86;
+  --success:#6af7c4; --error:#ff6b8a; --msg-own:#1a1a2e; --msg-other:#141420;
 }
-
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'DM Mono', monospace;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* HEADER */
-.header {
-  display: flex;
-  align-items: center;
-  padding: 12px 20px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.logo {
-  font-family: 'Syne', sans-serif;
-  font-size: 16px;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--text) 40%, var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  white-space: nowrap;
-}
-
-.status-bar {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.online-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--muted);
-  transition: background 0.3s;
-  flex-shrink: 0;
-}
-
-.online-dot.on { background: var(--success); box-shadow: 0 0 6px var(--success); }
-
-#status-text { font-size: 11px; letter-spacing: 0.5px; }
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.btn-icon {
-  width: 38px; height: 38px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--muted);
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px;
-  transition: all 0.2s;
-}
-
-.btn-icon:hover { color: var(--text); border-color: var(--accent); background: rgba(124,106,247,0.08); }
-.btn-icon.active { color: var(--accent); border-color: var(--accent); background: rgba(124,106,247,0.12); }
-.btn-icon.danger:hover { color: var(--error); border-color: var(--error); background: rgba(255,107,138,0.1); }
-
-/* MESSAGES */
-.messages-container {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  scroll-behavior: smooth;
-}
-
-.messages-container::-webkit-scrollbar { width: 4px; }
-.messages-container::-webkit-scrollbar-track { background: transparent; }
-.messages-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-.day-divider {
-  text-align: center;
-  margin: 12px 0;
-  font-size: 10px;
-  letter-spacing: 2px;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
-.msg-wrap {
-  display: flex;
-  flex-direction: column;
-  max-width: 72%;
-  animation: msgIn 0.2s ease;
-}
-
-@keyframes msgIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.msg-wrap.own { align-self: flex-end; align-items: flex-end; }
-.msg-wrap.other { align-self: flex-start; align-items: flex-start; }
-
-.msg-name {
-  font-size: 10px;
-  letter-spacing: 1px;
-  color: var(--muted);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-}
-
-.msg-wrap.own .msg-name { color: var(--accent); }
-.msg-wrap.other .msg-name { color: var(--accent2); }
-
-.msg-bubble {
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  font-size: 14px;
-  line-height: 1.5;
-  word-break: break-word;
-  max-width: 100%;
-}
-
-.msg-wrap.own .msg-bubble {
-  background: var(--msg-own);
-  border-color: rgba(124,106,247,0.25);
-  border-radius: 12px 12px 2px 12px;
-}
-
-.msg-wrap.other .msg-bubble {
-  background: var(--msg-other);
-  border-radius: 12px 12px 12px 2px;
-}
-
-.msg-time {
-  font-size: 9px;
-  color: var(--muted);
-  margin-top: 4px;
-  letter-spacing: 1px;
-}
-
-.msg-image {
-  max-width: 280px;
-  max-height: 300px;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: opacity 0.2s;
-  display: block;
-}
-
-.msg-image:hover { opacity: 0.85; }
-
-.msg-file {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  background: var(--surface2);
-  border-radius: 8px;
-  text-decoration: none;
-  color: var(--text);
-  font-size: 12px;
-  transition: border-color 0.2s;
-}
-
-.msg-file:hover { border-color: var(--accent); }
-.msg-file .file-icon { font-size: 24px; }
-
-/* TYPING */
-.typing-indicator {
-  padding: 8px 16px;
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 1px;
-  min-height: 24px;
-  flex-shrink: 0;
-}
-
-.typing-dots span {
-  animation: blink 1.2s infinite;
-  opacity: 0;
-}
-
-.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes blink {
-  0%, 100% { opacity: 0; }
-  50% { opacity: 1; }
-}
-
-/* INPUT AREA */
-.input-area {
-  padding: 12px 16px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.input-wrap {
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  border-radius: 6px;
-  overflow: hidden;
-  transition: border-color 0.2s;
-}
-
-.input-wrap:focus-within { border-color: var(--accent); }
-
-#msg-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: var(--text);
-  font-family: 'DM Mono', monospace;
-  font-size: 14px;
-  padding: 12px 14px;
-  resize: none;
-  max-height: 120px;
-  outline: none;
-  line-height: 1.5;
-}
-
-#msg-input::placeholder { color: var(--muted); }
-
-.input-file-btn {
-  padding: 10px 12px;
-  background: transparent;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 18px;
-  transition: color 0.2s;
-  flex-shrink: 0;
-}
-
-.input-file-btn:hover { color: var(--accent2); }
-
-.send-btn {
-  width: 44px; height: 44px;
-  background: var(--accent);
-  border: none;
-  border-radius: 6px;
-  color: #fff;
-  cursor: pointer;
-  font-size: 18px;
-  display: flex; align-items: center; justify-content: center;
-  transition: opacity 0.2s, transform 0.1s;
-  flex-shrink: 0;
-}
-
-.send-btn:hover { opacity: 0.85; }
-.send-btn:active { transform: scale(0.95); }
-
-/* CALL OVERLAY */
-.call-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(10,10,15,0.95);
-  z-index: 1000;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-}
-
-.call-overlay.active { display: flex; }
-
-.call-title {
-  font-family: 'Syne', sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.call-user-name {
-  font-family: 'Syne', sans-serif;
-  font-size: 32px;
-  font-weight: 800;
-  text-align: center;
-}
-
-.call-status {
-  font-size: 12px;
-  color: var(--muted);
-  letter-spacing: 2px;
-}
-
-.video-container {
-  position: relative;
-  width: min(90vw, 640px);
-  display: none;
-}
-
-.video-container.active { display: block; }
-
-#remoteVideo {
-  width: 100%;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: #000;
-}
-
-#localVideo {
-  position: absolute;
-  bottom: 12px;
-  right: 12px;
-  width: 120px;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: #000;
-}
-
-.call-controls {
-  display: flex;
-  gap: 16px;
-}
-
-.call-btn {
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  font-size: 22px;
-  display: flex; align-items: center; justify-content: center;
-  transition: transform 0.15s, opacity 0.2s;
-}
-
-.call-btn:hover { transform: scale(1.08); }
-.call-btn:active { transform: scale(0.95); }
-
-.call-btn.end { background: var(--error); }
-.call-btn.mute { background: var(--surface2); border: 1px solid var(--border); }
-.call-btn.video-toggle { background: var(--surface2); border: 1px solid var(--border); }
-.call-btn.accept { background: var(--success); }
-
-/* INCOMING CALL */
-.incoming-overlay {
-  position: fixed;
-  bottom: 80px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 999;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: 2px solid var(--accent);
-  padding: 20px 28px;
-  display: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  min-width: 280px;
-  animation: slideUp 0.3s ease;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-.incoming-overlay.active { display: flex; }
-
-.incoming-title {
-  font-size: 11px;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.incoming-name {
-  font-family: 'Syne', sans-serif;
-  font-size: 20px;
-  font-weight: 700;
-}
-
-.incoming-type {
-  font-size: 12px;
-  color: var(--accent2);
-}
-
-.incoming-btns {
-  display: flex;
-  gap: 20px;
-}
-
-/* IMAGE LIGHTBOX */
-.lightbox {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.92);
-  z-index: 2000;
-  align-items: center;
-  justify-content: center;
-  cursor: zoom-out;
-}
-
-.lightbox.active { display: flex; }
-
-.lightbox img {
-  max-width: 92vw;
-  max-height: 92vh;
-  border-radius: 4px;
-  box-shadow: 0 0 60px rgba(0,0,0,0.8);
-}
-
-/* TOAST */
-.toast {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
-  padding: 12px 18px;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  z-index: 3000;
-  opacity: 0;
-  transform: translateX(20px);
-  transition: all 0.3s;
-  pointer-events: none;
-}
-
-.toast.show { opacity: 1; transform: translateX(0); }
+body { background:var(--bg); color:var(--text); font-family:'DM Mono', monospace; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
+.header { display:flex; align-items:center; padding:12px 20px; background:var(--surface); border-bottom:1px solid var(--border); gap:12px; flex-shrink:0; }
+.logo { font-family:'Syne', sans-serif; font-size:16px; font-weight:800; background:linear-gradient(135deg,var(--text) 40%,var(--accent)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; white-space:nowrap; }
+.status-bar { flex:1; display:flex; align-items:center; gap:8px; font-size:11px; color:var(--muted); min-width:0; }
+.online-dot { width:7px; height:7px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+.online-dot.on { background:var(--success); box-shadow:0 0 6px var(--success); }
+#status-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.header-actions { display:flex; gap:8px; }
+.btn-icon { width:38px; height:38px; border:1px solid var(--border); background:transparent; color:var(--muted); border-radius:4px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:16px; transition:all .2s; }
+.btn-icon:hover { color:var(--text); border-color:var(--accent); background:rgba(124,106,247,.08); }
+.btn-icon.danger:hover { color:var(--error); border-color:var(--error); background:rgba(255,107,138,.1); }
+.messages-container { flex:1; overflow-y:auto; padding:20px 16px; display:flex; flex-direction:column; gap:4px; scroll-behavior:smooth; }
+.messages-container::-webkit-scrollbar { width:4px; }
+.messages-container::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+.day-divider { text-align:center; margin:12px 0; font-size:10px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; }
+.msg-wrap { display:flex; flex-direction:column; max-width:72%; animation:msgIn .2s ease; }
+@keyframes msgIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+.msg-wrap.own { align-self:flex-end; align-items:flex-end; }
+.msg-wrap.other { align-self:flex-start; align-items:flex-start; }
+.msg-name { font-size:10px; letter-spacing:1px; color:var(--muted); margin-bottom:4px; text-transform:uppercase; }
+.msg-wrap.own .msg-name { color:var(--accent); }
+.msg-wrap.other .msg-name { color:var(--accent2); }
+.msg-bubble { padding:10px 14px; border:1px solid var(--border); font-size:14px; line-height:1.5; word-break:break-word; max-width:100%; }
+.msg-wrap.own .msg-bubble { background:var(--msg-own); border-color:rgba(124,106,247,.25); border-radius:12px 12px 2px 12px; }
+.msg-wrap.other .msg-bubble { background:var(--msg-other); border-radius:12px 12px 12px 2px; }
+.msg-time { font-size:9px; color:var(--muted); margin-top:4px; letter-spacing:1px; }
+.msg-image { max-width:280px; max-height:300px; border-radius:8px; cursor:pointer; display:block; }
+.msg-file { display:flex; align-items:center; gap:10px; padding:10px 14px; border:1px solid var(--border); background:var(--surface2); border-radius:8px; text-decoration:none; color:var(--text); font-size:12px; }
+.typing-indicator { padding:8px 16px; font-size:11px; color:var(--muted); letter-spacing:1px; min-height:24px; flex-shrink:0; }
+.typing-dots span { animation:blink 1.2s infinite; opacity:0; }
+.typing-dots span:nth-child(2) { animation-delay:.2s; }
+.typing-dots span:nth-child(3) { animation-delay:.4s; }
+@keyframes blink { 0%,100% { opacity:0; } 50% { opacity:1; } }
+.input-area { padding:12px 16px; background:var(--surface); border-top:1px solid var(--border); display:flex; align-items:flex-end; gap:10px; flex-shrink:0; }
+.input-wrap { flex:1; display:flex; align-items:flex-end; border:1px solid var(--border); background:var(--bg); border-radius:6px; overflow:hidden; }
+.input-wrap:focus-within { border-color:var(--accent); }
+#msg-input { flex:1; background:transparent; border:none; color:var(--text); font-family:'DM Mono', monospace; font-size:14px; padding:12px 14px; resize:none; max-height:120px; outline:none; line-height:1.5; }
+.input-file-btn { padding:10px 12px; background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:18px; flex-shrink:0; }
+.send-btn { width:44px; height:44px; background:var(--accent); border:none; border-radius:6px; color:#fff; cursor:pointer; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.call-overlay { position:fixed; inset:0; background:rgba(10,10,15,.95); z-index:1000; display:none; flex-direction:column; align-items:center; justify-content:center; gap:20px; padding:20px; }
+.call-overlay.active { display:flex; }
+.call-title { font-family:'Syne', sans-serif; font-size:14px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:var(--muted); }
+.call-user-name { font-family:'Syne', sans-serif; font-size:32px; font-weight:800; text-align:center; }
+.call-status { font-size:12px; color:var(--muted); letter-spacing:2px; text-align:center; }
+.video-container { position:relative; width:min(90vw, 640px); display:none; }
+.video-container.active { display:block; }
+#remoteVideo { width:100%; border-radius:8px; border:1px solid var(--border); background:#000; }
+#localVideo { position:absolute; bottom:12px; right:12px; width:120px; border-radius:6px; border:1px solid var(--accent); background:#000; }
+.call-controls { display:flex; gap:16px; }
+.call-btn { width:56px; height:56px; border-radius:50%; border:none; cursor:pointer; font-size:22px; display:flex; align-items:center; justify-content:center; }
+.call-btn.end { background:var(--error); }
+.call-btn.mute, .call-btn.video-toggle { background:var(--surface2); border:1px solid var(--border); }
+.call-btn.accept { background:var(--success); }
+.incoming-overlay { position:fixed; bottom:80px; left:50%; transform:translateX(-50%); z-index:999; background:var(--surface); border:1px solid var(--border); border-top:2px solid var(--accent); padding:20px 28px; display:none; flex-direction:column; align-items:center; gap:14px; min-width:280px; }
+.incoming-overlay.active { display:flex; }
+.incoming-title { font-size:11px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+.incoming-name { font-family:'Syne', sans-serif; font-size:20px; font-weight:700; }
+.incoming-type { font-size:12px; color:var(--accent2); }
+.incoming-btns { display:flex; gap:20px; }
+.lightbox { display:none; position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:2000; align-items:center; justify-content:center; cursor:zoom-out; }
+.lightbox.active { display:flex; }
+.lightbox img { max-width:92vw; max-height:92vh; border-radius:4px; }
+.toast { position:fixed; bottom:20px; right:20px; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--accent); padding:12px 18px; font-size:12px; letter-spacing:.5px; z-index:3000; opacity:0; transform:translateX(20px); transition:all .3s; pointer-events:none; }
+.toast.show { opacity:1; transform:translateX(0); }
 </style>
 </head>
 <body>
-
 <div class="header">
   <div class="logo">🔐 PM</div>
-  <div class="status-bar">
-    <div class="online-dot" id="otherDot"></div>
-    <span id="status-text">Bağlanıyor...</span>
-  </div>
+  <div class="status-bar"><div class="online-dot" id="otherDot"></div><span id="status-text">Bağlanıyor...</span></div>
   <div class="header-actions">
     <button class="btn-icon" id="voiceCallBtn" title="Sesli Arama" onclick="startCall('audio')">🎙️</button>
     <button class="btn-icon" id="videoCallBtn" title="Görüntülü Arama" onclick="startCall('video')">📹</button>
@@ -486,10 +91,7 @@ body {
   </div>
 </div>
 
-<div class="messages-container" id="messages">
-  <div class="day-divider">— Bugün —</div>
-</div>
-
+<div class="messages-container" id="messages"><div class="day-divider">— Bugün —</div></div>
 <div class="typing-indicator" id="typingIndicator"></div>
 
 <div class="input-area">
@@ -500,9 +102,8 @@ body {
   <button class="send-btn" onclick="sendMessage()">➤</button>
 </div>
 
-<input type="file" id="fileInput" accept="image/*,.pdf,.mp4" style="display:none" onchange="handleFileUpload(this)">
+<input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,video/mp4" style="display:none" onchange="handleFileUpload(this)">
 
-<!-- INCOMING CALL -->
 <div class="incoming-overlay" id="incomingOverlay">
   <div class="incoming-title">Gelen Arama</div>
   <div class="incoming-name" id="incomingName"></div>
@@ -513,17 +114,14 @@ body {
   </div>
 </div>
 
-<!-- CALL OVERLAY -->
 <div class="call-overlay" id="callOverlay">
   <div class="call-title" id="callTitle">Arama</div>
   <div class="call-user-name" id="callUserName"></div>
   <div class="call-status" id="callStatus">Bağlanılıyor...</div>
-
   <div class="video-container" id="videoContainer">
     <video id="remoteVideo" autoplay playsinline></video>
     <video id="localVideo" autoplay playsinline muted></video>
   </div>
-
   <div class="call-controls">
     <button class="call-btn mute" id="muteBtn" onclick="toggleMute()" title="Mikrofon">🎙️</button>
     <button class="call-btn video-toggle" id="videoBtn" onclick="toggleVideo()" title="Kamera">📹</button>
@@ -531,12 +129,7 @@ body {
   </div>
 </div>
 
-<!-- LIGHTBOX -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox()">
-  <img id="lightboxImg" src="">
-</div>
-
-<!-- TOAST -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()"><img id="lightboxImg" src="" alt=""></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -552,34 +145,31 @@ let incomingCallData = null;
 let isMuted = false;
 let isVideoOff = false;
 let otherOnline = false;
+let callActive = false;
+let sentEndSignal = false;
 
-// ── SOCKET ──────────────────────────────
 socket.on('connect', () => {
   socket.emit('join', {});
   loadHistory();
 });
 
+socket.on('connect_error', () => showToast('Bağlantı hatası'));
+socket.on('disconnect', () => showToast('Bağlantı koptu'));
+
 async function loadHistory() {
   try {
     const res = await fetch('/api/messages');
+    if (!res.ok) return;
     const msgs = await res.json();
     if (!Array.isArray(msgs) || msgs.length === 0) return;
 
     const container = document.getElementById('messages');
-    // Bugünkü tarih ayırıcısını kaldır, tarihe göre yeniden koyacağız
     container.innerHTML = '';
 
     let lastDate = '';
     msgs.forEach(msg => {
-      if (msg.date_label && msg.date_label !== lastDate) {
-        lastDate = msg.date_label;
-        const div = document.createElement('div');
-        div.className = 'day-divider';
-        const today = new Date().toLocaleDateString('tr-TR', {day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\./g,'.').split('.');
-        const todayStr = today.reverse().join('.');  // basit karşılaştırma
-        div.textContent = '— ' + msg.date_label + ' —';
-        container.appendChild(div);
-      }
+      appendDateDividerIfNeeded(msg.date_label, lastDate);
+      if (msg.date_label) lastDate = msg.date_label;
       appendMessage(msg);
     });
     scrollToBottom();
@@ -588,8 +178,22 @@ async function loadHistory() {
   }
 }
 
+function appendDateDividerIfNeeded(dateLabel, lastDate) {
+  if (!dateLabel || dateLabel === lastDate) return;
+  const div = document.createElement('div');
+  div.className = 'day-divider';
+  div.textContent = '— ' + (isTodayLabel(dateLabel) ? 'Bugün' : dateLabel) + ' —';
+  document.getElementById('messages').appendChild(div);
+}
+
+function isTodayLabel(dateLabel) {
+  const today = new Date().toLocaleDateString('tr-TR', { day:'2-digit', month:'2-digit', year:'numeric' });
+  return dateLabel === today;
+}
+
 socket.on('user_status', (data) => {
-  const others = data.online.filter(u => u.id !== ME.id);
+  const onlineList = Array.isArray(data.online) ? data.online : [];
+  const others = onlineList.filter(u => u.id !== ME.id);
   otherOnline = others.length > 0;
   const dot = document.getElementById('otherDot');
   const txt = document.getElementById('status-text');
@@ -609,37 +213,36 @@ socket.on('message', (msg) => {
 
 socket.on('typing', (data) => {
   const el = document.getElementById('typingIndicator');
-  if (data.typing) {
-    el.innerHTML = `<span class="typing-dots">${data.user.name} yazıyor<span>.</span><span>.</span><span>.</span></span>`;
+  if (data.typing && data.user && data.user.name) {
+    el.innerHTML = `<span class="typing-dots">${escapeHtml(data.user.name)} yazıyor<span>.</span><span>.</span><span>.</span></span>`;
   } else {
     el.innerHTML = '';
   }
 });
 
-// ── MESSAGES ────────────────────────────
 function appendMessage(msg) {
+  if (!msg || !msg.user) return;
   const isOwn = msg.user.id === ME.id;
   const wrap = document.createElement('div');
   wrap.className = 'msg-wrap ' + (isOwn ? 'own' : 'other');
 
+  const safeUrl = sanitizeRelativeUrl(msg.file_url || '');
   let content = '';
-  if (msg.type === 'image') {
-    content = `<img class="msg-image" src="${msg.file_url}" onclick="openLightbox('${msg.file_url}')" loading="lazy">`;
-  } else if (msg.type === 'file') {
-    content = `<a class="msg-file" href="${msg.file_url}" target="_blank" download>
-      <span class="file-icon">📄</span>
-      <span>${escapeHtml(msg.file_name || 'Dosya')}</span>
+  if (msg.type === 'image' && safeUrl) {
+    content = `<img class="msg-image" src="${safeUrl}" onclick="openLightbox('${safeUrl}')" loading="lazy" alt="Görsel">`;
+  } else if (msg.type === 'file' && safeUrl) {
+    content = `<a class="msg-file" href="${safeUrl}" target="_blank" rel="noopener" download>
+      <span class="file-icon">📄</span><span>${escapeHtml(msg.file_name || 'Dosya')}</span>
     </a>`;
   } else {
-    content = `<div class="msg-bubble">${escapeHtml(msg.text).replace(/\n/g,'<br>')}</div>`;
+    content = `<div class="msg-bubble">${escapeHtml(msg.text || '').replace(/\n/g,'<br>')}</div>`;
   }
 
   wrap.innerHTML = `
-    <div class="msg-name">${escapeHtml(msg.user.name)}</div>
+    <div class="msg-name">${escapeHtml(msg.user.name || '')}</div>
     ${content}
-    <div class="msg-time">${msg.timestamp}</div>
+    <div class="msg-time">${escapeHtml(msg.timestamp || '')}</div>
   `;
-
   document.getElementById('messages').appendChild(wrap);
 }
 
@@ -653,20 +256,16 @@ function sendMessage() {
   stopTyping();
 }
 
-// ── INPUT HANDLING ───────────────────────
 const msgInput = document.getElementById('msg-input');
-
 msgInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
   }
 });
-
 msgInput.addEventListener('input', () => {
   msgInput.style.height = 'auto';
   msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
-
   if (!isTyping) {
     isTyping = true;
     socket.emit('typing', { typing: true });
@@ -674,7 +273,6 @@ msgInput.addEventListener('input', () => {
   clearTimeout(typingTimer);
   typingTimer = setTimeout(stopTyping, 2000);
 });
-
 function stopTyping() {
   if (isTyping) {
     isTyping = false;
@@ -682,20 +280,24 @@ function stopTyping() {
   }
 }
 
-// ── FILE UPLOAD ──────────────────────────
 async function handleFileUpload(input) {
   const file = input.files[0];
   if (!file) return;
+  const allowedTypes = ['image/png','image/jpeg','image/gif','image/webp','application/pdf','video/mp4'];
+  if (!allowedTypes.includes(file.type)) {
+    showToast('İzin verilmeyen dosya türü');
+    input.value = '';
+    return;
+  }
 
   const formData = new FormData();
   formData.append('file', file);
-
   showToast('Dosya yükleniyor...');
 
   try {
     const res = await fetch('/upload', { method: 'POST', body: formData });
     const data = await res.json();
-    if (data.url) {
+    if (res.ok && data.url) {
       const isImage = file.type.startsWith('image/');
       socket.emit('message', {
         type: isImage ? 'image' : 'file',
@@ -710,46 +312,61 @@ async function handleFileUpload(input) {
   } catch (e) {
     showToast('Yükleme hatası');
   }
-
   input.value = '';
 }
 
-// ── WEBRTC ───────────────────────────────
 const iceConfig = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' }
+    // Sıkı NAT ortamları için production'da TURN ekleyin:
+    // { urls: 'turn:TURN_SERVER:3478', username: 'USER', credential: 'PASS' }
   ]
 };
 
 async function startCall(type) {
   if (!otherOnline) { showToast('Karşı taraf çevrimdışı'); return; }
+  if (callActive) { showToast('Zaten aktif bir arama var'); return; }
   callType = type;
-  socket.emit('call_request', { type, from: ME });
+  callActive = true;
+  sentEndSignal = false;
+  socket.emit('call_request', { type });
   showCallOverlay(type, 'Aranıyor...');
 }
 
-socket.on('call_request', async (data) => {
+socket.on('call_request', (data) => {
+  if (callActive) {
+    socket.emit('call_response', { accepted: false, reason: 'busy' });
+    return;
+  }
   incomingCallData = data;
-  document.getElementById('incomingName').textContent = data.from.name;
+  document.getElementById('incomingName').textContent = data.from && data.from.name ? data.from.name : 'Karşı taraf';
   document.getElementById('incomingType').textContent = data.type === 'video' ? '📹 Görüntülü Arama' : '🎙️ Sesli Arama';
   document.getElementById('incomingOverlay').classList.add('active');
   ringbell();
 });
 
 async function acceptCall() {
+  if (!incomingCallData) return;
   document.getElementById('incomingOverlay').classList.remove('active');
   callType = incomingCallData.type;
-  await initLocalStream();
-  showCallOverlay(callType, 'Bağlandı');
+  callActive = true;
+  sentEndSignal = false;
 
-  peerConnection = createPC();
-  localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
-
-  const offer = await peerConnection.createOffer();
-  await peerConnection.setLocalDescription(offer);
-  socket.emit('webrtc_offer', { sdp: offer });
-  socket.emit('call_response', { accepted: true });
+  try {
+    await initLocalStream();
+    showCallOverlay(callType, 'Bağlanıyor...');
+    peerConnection = createPC();
+    localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit('webrtc_offer', { sdp: offer });
+    socket.emit('call_response', { accepted: true });
+  } catch (e) {
+    showToast('Mikrofon/kamera izni alınamadı');
+    socket.emit('call_response', { accepted: false });
+    cleanupCall();
+  }
 }
 
 function rejectCall() {
@@ -760,32 +377,47 @@ function rejectCall() {
 
 socket.on('call_response', async (data) => {
   if (!data.accepted) {
-    endCall();
-    showToast('Arama reddedildi');
+    cleanupCall();
+    showToast(data.reason === 'busy' ? 'Karşı taraf meşgul' : 'Arama reddedildi');
     return;
   }
-  await initLocalStream();
-  peerConnection = createPC();
-  localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
-});
-
-socket.on('webrtc_offer', async (data) => {
-  if (!peerConnection) {
+  try {
     await initLocalStream();
     peerConnection = createPC();
     localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+  } catch (e) {
+    showToast('Mikrofon/kamera izni alınamadı');
+    endCall();
   }
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-  socket.emit('webrtc_answer', { sdp: answer });
-  document.getElementById('callStatus').textContent = 'Bağlandı ✓';
+});
+
+socket.on('webrtc_offer', async (data) => {
+  try {
+    if (!peerConnection) {
+      await initLocalStream();
+      peerConnection = createPC();
+      localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
+    }
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    socket.emit('webrtc_answer', { sdp: answer });
+    document.getElementById('callStatus').textContent = 'Bağlandı ✓';
+  } catch (e) {
+    showToast('Arama bağlantısı kurulamadı');
+    endCall();
+  }
 });
 
 socket.on('webrtc_answer', async (data) => {
-  if (peerConnection) {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
-    document.getElementById('callStatus').textContent = 'Bağlandı ✓';
+  try {
+    if (peerConnection) {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.sdp));
+      document.getElementById('callStatus').textContent = 'Bağlandı ✓';
+    }
+  } catch (e) {
+    showToast('Arama yanıtı işlenemedi');
+    endCall();
   }
 });
 
@@ -796,7 +428,7 @@ socket.on('webrtc_ice', async (data) => {
 });
 
 socket.on('call_end', () => {
-  endCall();
+  cleanupCall();
   showToast('Arama sonlandı');
 });
 
@@ -809,10 +441,16 @@ function createPC() {
     document.getElementById('remoteVideo').srcObject = e.streams[0];
     document.getElementById('callStatus').textContent = 'Bağlandı ✓';
   };
+  pc.onconnectionstatechange = () => {
+    if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) {
+      document.getElementById('callStatus').textContent = 'Bağlantı koptu';
+    }
+  };
   return pc;
 }
 
 async function initLocalStream() {
+  if (localStream) return;
   const constraints = callType === 'video'
     ? { audio: true, video: { facingMode: 'user' } }
     : { audio: true, video: false };
@@ -825,12 +463,23 @@ function showCallOverlay(type, status) {
   document.getElementById('callTitle').textContent = type === 'video' ? '📹 Görüntülü Arama' : '🎙️ Sesli Arama';
   document.getElementById('callUserName').textContent = otherOnline ? document.getElementById('status-text').textContent.split(' —')[0] : '...';
   document.getElementById('callStatus').textContent = status;
-  if (type === 'video') document.getElementById('videoContainer').classList.add('active');
+  if (type === 'video') {
+    document.getElementById('videoContainer').classList.add('active');
+  } else {
+    document.getElementById('videoContainer').classList.remove('active');
+  }
   overlay.classList.add('active');
 }
 
 function endCall() {
-  socket.emit('call_end', {});
+  if (!sentEndSignal) {
+    sentEndSignal = true;
+    socket.emit('call_end', {});
+  }
+  cleanupCall();
+}
+
+function cleanupCall() {
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   if (peerConnection) { peerConnection.close(); peerConnection = null; }
   document.getElementById('callOverlay').classList.remove('active');
@@ -838,7 +487,13 @@ function endCall() {
   document.getElementById('remoteVideo').srcObject = null;
   document.getElementById('localVideo').srcObject = null;
   document.getElementById('incomingOverlay').classList.remove('active');
-  isMuted = false; isVideoOff = false;
+  document.getElementById('muteBtn').textContent = '🎙️';
+  document.getElementById('videoBtn').textContent = '📹';
+  isMuted = false;
+  isVideoOff = false;
+  callActive = false;
+  callType = null;
+  incomingCallData = null;
 }
 
 function toggleMute() {
@@ -855,33 +510,31 @@ function toggleVideo() {
   document.getElementById('videoBtn').textContent = isVideoOff ? '📵' : '📹';
 }
 
-// ── UTILS ────────────────────────────────
 function scrollToBottom() {
   const el = document.getElementById('messages');
   el.scrollTop = el.scrollHeight;
 }
-
 function openLightbox(src) {
-  document.getElementById('lightboxImg').src = src;
+  const safeUrl = sanitizeRelativeUrl(src);
+  if (!safeUrl) return;
+  document.getElementById('lightboxImg').src = safeUrl;
   document.getElementById('lightbox').classList.add('active');
 }
-
-function closeLightbox() {
-  document.getElementById('lightbox').classList.remove('active');
-}
-
+function closeLightbox() { document.getElementById('lightbox').classList.remove('active'); }
 function escapeHtml(str) {
-  if (!str) return '';
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
-
+function sanitizeRelativeUrl(url) {
+  const value = String(url || '');
+  if (value.startsWith('/static/uploads/')) return value.replace(/"/g, '%22').replace(/'/g, '%27');
+  return '';
+}
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 3000);
 }
-
 function ringbell() {
   try {
     const ctx = new AudioContext();
