@@ -33,7 +33,6 @@ USER2_NAME = os.environ.get('USER2_NAME', 'Kişi 2')
 if IS_PRODUCTION and (not USER1_CODE or not USER2_CODE):
     raise RuntimeError('USER1_CODE ve USER2_CODE production ortamında zorunludur.')
 
-# Sadece yerel geliştirme kolaylığı için varsayılan kodlar kullanılır.
 USER1_CODE = USER1_CODE or 'KARA-001'
 USER2_CODE = USER2_CODE or 'KARA-002'
 
@@ -44,15 +43,13 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'mp4', 'pdf'}
-ALLOWED_MIME_TYPES = {
-    'image/png',
-    'image/jpeg',
-    'image/gif',
-    'image/webp',
-    'video/mp4',
-    'application/pdf',
-}
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+FILE_EXTENSIONS = {'mp4', 'pdf'}
+ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | FILE_EXTENSIONS
+
+IMAGE_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
+FILE_MIME_TYPES = {'video/mp4', 'application/pdf'}
+ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | FILE_MIME_TYPES
 
 ROOM = 'private_room'
 socketio = SocketIO(app, cors_allowed_origins=[], async_mode='eventlet')
@@ -125,13 +122,8 @@ def save_message(msg):
                         INSERT INTO messages (id, user_id, user_name, type, text, file_url, file_name, created_at)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ''', (
-                        msg['id'],
-                        msg['user']['id'],
-                        msg['user']['name'],
-                        msg['type'],
-                        msg.get('text', ''),
-                        msg.get('file_url', ''),
-                        msg.get('file_name', ''),
+                        msg['id'], msg['user']['id'], msg['user']['name'], msg['type'],
+                        msg.get('text', ''), msg.get('file_url', ''), msg.get('file_name', ''),
                         created_at.replace(tzinfo=None),
                     ))
         else:
@@ -140,13 +132,8 @@ def save_message(msg):
                     INSERT INTO messages (id, user_id, user_name, type, text, file_url, file_name, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    msg['id'],
-                    msg['user']['id'],
-                    msg['user']['name'],
-                    msg['type'],
-                    msg.get('text', ''),
-                    msg.get('file_url', ''),
-                    msg.get('file_name', ''),
+                    msg['id'], msg['user']['id'], msg['user']['name'], msg['type'],
+                    msg.get('text', ''), msg.get('file_url', ''), msg.get('file_name', ''),
                     created_at.isoformat(),
                 ))
     finally:
@@ -205,12 +192,29 @@ except Exception as e:
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
 
+def file_extension(filename):
+    if not filename or '.' not in filename:
+        return ''
+    return filename.rsplit('.', 1)[1].lower()
+
+
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return file_extension(filename) in ALLOWED_EXTENSIONS
 
 
 def allowed_mime(file):
     return file.mimetype in ALLOWED_MIME_TYPES
+
+
+def allowed_photo(file):
+    return file_extension(file.filename) in IMAGE_EXTENSIONS and file.mimetype in IMAGE_MIME_TYPES
+
+
+def save_uploaded_file(file):
+    ext = file_extension(file.filename)
+    filename = f'{uuid.uuid4().hex}.{ext}'
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    return {'url': f'/static/uploads/{filename}', 'name': file.filename}
 
 
 def validate_code(code):
@@ -258,8 +262,24 @@ def chat():
 def api_messages():
     if 'user' not in session:
         return jsonify({'error': 'Yetkisiz'}), 401
-    msgs = load_messages(200)
-    return jsonify(msgs)
+    return jsonify(load_messages(200))
+
+
+@app.route('/upload/photo', methods=['POST'])
+def upload_photo():
+    if 'user' not in session:
+        return jsonify({'error': 'Yetkisiz'}), 401
+    if 'photo' not in request.files:
+        return jsonify({'error': 'Fotoğraf yok'}), 400
+
+    photo = request.files['photo']
+    if photo.filename == '':
+        return jsonify({'error': 'Fotoğraf seçilmedi'}), 400
+    if not allowed_photo(photo):
+        return jsonify({'error': 'Sadece PNG, JPG, JPEG, GIF veya WEBP fotoğraf yüklenebilir'}), 400
+
+    saved = save_uploaded_file(photo)
+    return jsonify({**saved, 'type': 'image'})
 
 
 @app.route('/upload', methods=['POST'])
@@ -276,10 +296,9 @@ def upload_file():
     if not allowed_file(file.filename) or not allowed_mime(file):
         return jsonify({'error': 'İzin verilmeyen dosya türü'}), 400
 
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    filename = f'{uuid.uuid4().hex}.{ext}'
-    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    return jsonify({'url': f'/static/uploads/{filename}', 'name': file.filename})
+    saved = save_uploaded_file(file)
+    upload_type = 'image' if file.mimetype in IMAGE_MIME_TYPES else 'file'
+    return jsonify({**saved, 'type': upload_type})
 
 # ── SOCKETIO ─────────────────────────────────────────────────────────────────
 
@@ -290,11 +309,7 @@ def on_join(data):
     user = session['user']
     join_room(ROOM)
     online_users[request.sid] = user
-    emit('user_status', {
-        'user': user,
-        'online': list(online_users.values()),
-        'event': 'joined'
-    }, room=ROOM)
+    emit('user_status', {'user': user, 'online': list(online_users.values()), 'event': 'joined'}, room=ROOM)
 
 
 @socketio.on('disconnect')
@@ -302,11 +317,7 @@ def on_disconnect():
     if request.sid in online_users:
         user = online_users.pop(request.sid)
         leave_room(ROOM)
-        emit('user_status', {
-            'user': user,
-            'online': list(online_users.values()),
-            'event': 'left'
-        }, room=ROOM)
+        emit('user_status', {'user': user, 'online': list(online_users.values()), 'event': 'left'}, room=ROOM)
 
 
 @socketio.on('message')
