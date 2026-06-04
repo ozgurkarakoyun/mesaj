@@ -8,13 +8,27 @@ Sadece 2 kişi için, özel kod ile giriş yapılan, sesli/görüntülü arama d
 
 - ✅ Özel kod ile giriş (2 kişi)
 - 💬 Anlık mesajlaşma (WebSocket)
-- 📸 Fotoğraf / dosya gönderme
+- 🖼️ Fotoğraf gönderme, önizleme ve sohbet içinde görsel gösterimi
+- 📎 PDF / MP4 dosya gönderme
 - 🎙️ Sesli arama (WebRTC)
 - 📹 Görüntülü arama (WebRTC)
 - 🟢 Çevrimiçi/çevrimdışı durumu
 - ⌨️ "Yazıyor..." göstergesi
 - 🗄️ PostgreSQL varsa kalıcı kayıt, yoksa yerel SQLite fallback
 - 🛡️ Login rate-limit
+
+---
+
+## Fotoğraf Gönderme
+
+Sohbet ekranında iki ayrı buton vardır:
+
+- `🖼️` Fotoğraf gönderir. PNG, JPG, JPEG, GIF ve WEBP desteklenir.
+- `📎` Dosya gönderir. PDF ve MP4 desteklenir.
+
+Fotoğraf seçildiğinde önce küçük bir önizleme görünür. Kullanıcı **Gönder** ile fotoğrafı gönderir veya **İptal** ile seçimi temizler.
+
+Backend tarafında fotoğraflar özel olarak `/upload/photo` endpoint'i ile yüklenir. Yüklenen görseller sohbet içinde doğrudan görüntülenir ve tıklanınca büyütülür.
 
 ---
 
