@@ -2,147 +2,181 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>PrivateMsg — Giriş</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Giriş — Özel Mesaj</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0d0d1a;
-  --card:#13132a;
-  --border:#2a2a4a;
-  --accent:#6c63ff;
-  --accent2:#ff6b9d;
-  --text:#f0eeff;
-  --muted:#7b78a8;
-  --error:#ff4d6d;
-}
-body{
-  background:var(--bg);
-  font-family:'Inter',sans-serif;
-  min-height:100dvh;
-  display:flex;align-items:center;justify-content:center;
-  padding:20px;
-  overflow:hidden;
-}
-.orbs{position:fixed;inset:0;pointer-events:none;overflow:hidden}
-.orb{
-  position:absolute;border-radius:50%;filter:blur(80px);opacity:.35;
-  animation:float 8s ease-in-out infinite;
-}
-.orb1{width:400px;height:400px;background:#6c63ff;top:-100px;left:-100px;animation-delay:0s}
-.orb2{width:300px;height:300px;background:#ff6b9d;bottom:-80px;right:-80px;animation-delay:3s}
-.orb3{width:200px;height:200px;background:#00d4ff;top:50%;left:50%;transform:translate(-50%,-50%);animation-delay:1.5s}
-@keyframes float{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-20px) scale(1.05)}}
-.orb3{animation:float2 6s ease-in-out infinite}
-@keyframes float2{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-55%) scale(1.1)}}
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-.card{
-  position:relative;z-index:10;
-  width:100%;max-width:380px;
-  background:rgba(19,19,42,0.85);
-  backdrop-filter:blur(20px);
-  border:1px solid var(--border);
-  border-radius:20px;
-  padding:44px 36px;
-  box-shadow:0 24px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(108,99,255,0.1);
-}
-.card::before{
-  content:'';position:absolute;
-  top:0;left:24px;right:24px;height:2px;
-  background:linear-gradient(90deg,var(--accent),var(--accent2),#00d4ff);
-  border-radius:0 0 4px 4px;
-}
-.emoji{font-size:36px;margin-bottom:16px;display:block;
-  filter:drop-shadow(0 0 12px rgba(108,99,255,.6));
-  animation:pulse 2s ease-in-out infinite;}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
-h1{font-size:22px;font-weight:900;color:var(--text);letter-spacing:-.5px;margin-bottom:6px}
-.sub{font-size:12px;color:var(--muted);margin-bottom:36px;font-weight:500}
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --accent: #7c6af7;
+    --accent2: #f7a6c4;
+    --text: #e8e6f0;
+    --muted: #5a5870;
+    --error: #ff6b8a;
+  }
 
-label{display:block;font-size:11px;font-weight:600;letter-spacing:1.5px;
-  text-transform:uppercase;color:var(--muted);margin-bottom:10px}
-.input-wrap{
-  position:relative;margin-bottom:16px;
-}
-.input-wrap input{
-  width:100%;
-  background:rgba(255,255,255,0.04);
-  border:1.5px solid var(--border);
-  border-radius:12px;
-  color:var(--text);
-  font-family:'Inter',sans-serif;
-  font-size:20px;
-  font-weight:700;
-  letter-spacing:8px;
-  padding:14px 50px 14px 18px;
-  text-align:center;
-  outline:none;
-  transition:border-color .2s,background .2s,box-shadow .2s;
-}
-.input-wrap input:focus{
-  border-color:var(--accent);
-  background:rgba(108,99,255,0.08);
-  box-shadow:0 0 0 4px rgba(108,99,255,0.15);
-}
-.input-wrap input::placeholder{font-size:14px;letter-spacing:3px;color:var(--muted);font-weight:400}
-.eye-btn{
-  position:absolute;right:14px;top:50%;transform:translateY(-50%);
-  background:none;border:none;cursor:pointer;font-size:18px;color:var(--muted);
-  padding:4px;transition:color .2s;
-}
-.eye-btn:hover{color:var(--text)}
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
 
-.btn{
-  width:100%;padding:15px;
-  background:linear-gradient(135deg,var(--accent),#8b5cf6);
-  border:none;border-radius:12px;
-  color:#fff;font-family:'Inter',sans-serif;
-  font-size:14px;font-weight:700;letter-spacing:.5px;
-  cursor:pointer;
-  box-shadow:0 8px 24px rgba(108,99,255,0.4);
-  transition:transform .15s,box-shadow .15s,opacity .15s;
-}
-.btn:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(108,99,255,0.5)}
-.btn:active{transform:translateY(0);opacity:.9}
+  .grid-bg {
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px;
+    opacity: 0.4;
+    pointer-events: none;
+  }
 
-.error{
-  margin-top:14px;padding:12px 16px;
-  background:rgba(255,77,109,0.12);
-  border:1px solid rgba(255,77,109,0.35);
-  border-radius:10px;
-  color:var(--error);font-size:12px;font-weight:500;
-  display:flex;align-items:center;gap:8px;
-}
+  .glow {
+    position: fixed;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(124,106,247,0.12) 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .card {
+    position: relative;
+    z-index: 10;
+    width: 380px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 48px 40px;
+    animation: fadeUp 0.5s ease;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+
+  .logo {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--text) 40%, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+
+  label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  input {
+    width: 100%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 18px;
+    letter-spacing: 6px;
+    padding: 14px 16px;
+    text-transform: uppercase;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  input:focus {
+    border-color: var(--accent);
+    background: rgba(124,106,247,0.05);
+  }
+
+  input::placeholder { letter-spacing: 3px; font-size: 13px; color: var(--muted); }
+
+  .btn {
+    display: block;
+    width: 100%;
+    margin-top: 20px;
+    padding: 14px;
+    background: var(--accent);
+    color: #fff;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+
+  .btn:hover { opacity: 0.85; }
+  .btn:active { transform: scale(0.98); }
+
+  .error {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: rgba(255,107,138,0.1);
+    border: 1px solid var(--error);
+    color: var(--error);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  .lock-icon {
+    font-size: 28px;
+    margin-bottom: 20px;
+    filter: grayscale(0.3);
+  }
 </style>
 </head>
 <body>
-<div class="orbs">
-  <div class="orb orb1"></div>
-  <div class="orb orb2"></div>
-  <div class="orb orb3"></div>
-</div>
+<div class="grid-bg"></div>
+<div class="glow"></div>
+
 <div class="card">
-  <span class="emoji">🔐</span>
-  <h1>PrivateMsg</h1>
-  <p class="sub">Sadece iki kişi · Tamamen özel</p>
+  <div class="lock-icon">🔐</div>
+  <div class="logo">PrivateMsg</div>
+  <div class="subtitle">Şifreli Kanal · Sadece 2 Kişi</div>
+
   <form method="POST" action="/login">
     <label>Erişim Kodu</label>
-    <div class="input-wrap">
-      <input type="password" id="codeInput" name="code" placeholder="· · · · · · · ·" autofocus autocomplete="off" maxlength="20">
-      <button type="button" class="eye-btn" onclick="toggleVis()">👁️</button>
-    </div>
-    <button type="submit" class="btn">Giriş Yap →</button>
+    <input type="password" name="code" placeholder="••••••••" autofocus autocomplete="off" maxlength="20">
+    <button type="submit" class="btn">Giriş Yap</button>
     {% if error %}
     <div class="error">✗ {{ error }}</div>
     {% endif %}
   </form>
 </div>
-<script>
-function toggleVis(){
-  const i=document.getElementById('codeInput');
-  i.type=i.type==='password'?'text':'password';
-}
-</script>
 </body>
 </html>

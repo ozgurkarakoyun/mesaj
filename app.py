@@ -1,13 +1,15 @@
 import os
 import uuid
+import json
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gizli-anahtar-2024')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'gizli-anahtar-degistir-2024')
 app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
@@ -20,18 +22,17 @@ USER2_NAME = os.environ.get('USER2_NAME', 'Kişi 2')
 
 ROOM = 'private_room'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-
-# sid -> user dict
 online_users = {}
 
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# ── DATABASE ──────────────────────────────────────────────────────────────────
+# ── DATABASE ─────────────────────────────────────────────────────────────────
 
 def get_db():
     db_url = os.environ.get('DATABASE_URL')
     if not db_url:
         return None
+    # Railway bazen postgresql:// yerine postgres:// verir
     if db_url.startswith('postgres://'):
         db_url = db_url.replace('postgres://', 'postgresql://', 1)
     return psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
@@ -51,13 +52,8 @@ def init_db():
                     text        TEXT,
                     file_url    TEXT,
                     file_name   TEXT,
-                    read_at     TIMESTAMP,
                     created_at  TIMESTAMP NOT NULL DEFAULT NOW()
                 )
-            ''')
-            # Eski tabloya read_at kolonu ekle (zaten varsa hata vermez)
-            cur.execute('''
-                ALTER TABLE messages ADD COLUMN IF NOT EXISTS read_at TIMESTAMP
             ''')
         conn.commit()
     finally:
@@ -70,35 +66,19 @@ def save_message(msg):
     try:
         with conn.cursor() as cur:
             cur.execute('''
-                INSERT INTO messages
-                    (id, user_id, user_name, type, text, file_url, file_name, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                INSERT INTO messages (id, user_id, user_name, type, text, file_url, file_name, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ''', (
-                msg['id'], msg['user']['id'], msg['user']['name'],
-                msg['type'], msg.get('text',''),
-                msg.get('file_url',''), msg.get('file_name',''),
+                msg['id'],
+                msg['user']['id'],
+                msg['user']['name'],
+                msg['type'],
+                msg.get('text', ''),
+                msg.get('file_url', ''),
+                msg.get('file_name', ''),
                 datetime.utcnow()
             ))
         conn.commit()
-    finally:
-        conn.close()
-
-def mark_read(reader_id):
-    """Karşı tarafın mesajlarını okundu yap."""
-    conn = get_db()
-    if not conn:
-        return []
-    try:
-        with conn.cursor() as cur:
-            cur.execute('''
-                UPDATE messages
-                SET read_at = NOW()
-                WHERE user_id != %s AND read_at IS NULL
-                RETURNING id
-            ''', (reader_id,))
-            rows = cur.fetchall()
-        conn.commit()
-        return [r['id'] for r in rows]
     finally:
         conn.close()
 
@@ -125,18 +105,18 @@ def load_messages(limit=200):
                 'file_name': r['file_name'] or '',
                 'timestamp': r['created_at'].strftime('%H:%M') if r['created_at'] else '',
                 'date_label': r['created_at'].strftime('%d.%m.%Y') if r['created_at'] else '',
-                'read': r['read_at'] is not None,
             })
         return result
     finally:
         conn.close()
 
+# DB tablosunu uygulama başlarken oluştur
 try:
     init_db()
 except Exception as e:
     print(f"DB init warning: {e}")
 
-# ── HELPERS ───────────────────────────────────────────────────────────────────
+# ── HELPERS ──────────────────────────────────────────────────────────────────
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -149,10 +129,7 @@ def validate_code(code):
         return {'id': 'user2', 'name': USER2_NAME}
     return None
 
-def other_is_online(my_id):
-    return any(u['id'] != my_id for u in online_users.values())
-
-# ── ROUTES ────────────────────────────────────────────────────────────────────
+# ── ROUTES ───────────────────────────────────────────────────────────────────
 
 @app.route('/')
 def index():
@@ -183,10 +160,8 @@ def chat():
 def api_messages():
     if 'user' not in session:
         return jsonify({'error': 'Yetkisiz'}), 401
-    # Sayfa yüklenince kendi adıma karşı tarafın mesajlarını okundu işaretle
-    newly_read = mark_read(session['user']['id'])
     msgs = load_messages(200)
-    return jsonify({'messages': msgs, 'newly_read': newly_read})
+    return jsonify(msgs)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -204,7 +179,7 @@ def upload_file():
         return jsonify({'url': f'/static/uploads/{filename}', 'name': file.filename})
     return jsonify({'error': 'İzin verilmeyen dosya türü'}), 400
 
-# ── SOCKETIO ──────────────────────────────────────────────────────────────────
+# ── SOCKETIO ─────────────────────────────────────────────────────────────────
 
 @socketio.on('join')
 def on_join(data):
@@ -213,12 +188,6 @@ def on_join(data):
     user = session['user']
     join_room(ROOM)
     online_users[request.sid] = user
-
-    # Karşı taraf için bekleyen mesajları okundu yap ve bildir
-    newly_read = mark_read(user['id'])
-    if newly_read:
-        emit('messages_read', {'ids': newly_read, 'by': user['id']}, room=ROOM)
-
     emit('user_status', {
         'user': user,
         'online': list(online_users.values()),
@@ -241,8 +210,6 @@ def on_message(data):
     if 'user' not in session:
         return
     user = session['user']
-    # Karşı taraf çevrimiçiyse mesajı hemen okundu say
-    other_online = other_is_online(user['id'])
     msg = {
         'id': uuid.uuid4().hex,
         'user': user,
@@ -251,31 +218,12 @@ def on_message(data):
         'file_url': data.get('file_url', ''),
         'file_name': data.get('file_name', ''),
         'timestamp': datetime.now().strftime('%H:%M'),
-        'read': other_online,   # karşı taraf online ise delivered=read
     }
     try:
         save_message(msg)
-        if other_online:
-            # DB'de de okundu işaretle
-            conn = get_db()
-            if conn:
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute("UPDATE messages SET read_at=NOW() WHERE id=%s", (msg['id'],))
-                    conn.commit()
-                finally:
-                    conn.close()
     except Exception as e:
-        print(f"Save error: {e}")
+        print(f"Save message error: {e}")
     emit('message', msg, room=ROOM)
-
-@socketio.on('mark_read')
-def on_mark_read(data):
-    if 'user' not in session:
-        return
-    newly_read = mark_read(session['user']['id'])
-    if newly_read:
-        emit('messages_read', {'ids': newly_read, 'by': session['user']['id']}, room=ROOM)
 
 @socketio.on('typing')
 def on_typing(data):
@@ -284,7 +232,6 @@ def on_typing(data):
     emit('typing', {'user': session['user'], 'typing': data.get('typing', False)},
          room=ROOM, include_self=False)
 
-# WebRTC
 @socketio.on('webrtc_offer')
 def on_offer(data):
     emit('webrtc_offer', {**data, 'from': session.get('user', {})}, room=ROOM, include_self=False)
