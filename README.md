@@ -1,17 +1,20 @@
 # 🔐 PrivateMsg — İki Kişilik Özel Mesajlaşma
 
-Sadece 2 kişi için, özel kod ile giriş yapılan, sesli/görüntülü arama destekli anlık mesajlaşma uygulaması.
+Sadece 2 kişi için, özel kod ile giriş yapılan, WhatsApp benzeri tema, fotoğraf/kamera gönderimi, okundu bilgisi ve sesli/görüntülü arama destekli anlık mesajlaşma uygulaması.
 
 > Not: Uygulama HTTPS altında çalıştığında bağlantı taşıma katmanında korunur. Bu sürüm uçtan uca şifreleme (E2EE) yapmaz; mesajlar sunucu veritabanında düz metin olarak saklanır.
 
 ## Özellikler
 
 - ✅ Özel kod ile giriş (2 kişi)
+- 🟢 WhatsApp benzeri yeşil sohbet teması
 - 💬 Anlık mesajlaşma (WebSocket)
-- 🖼️ Fotoğraf gönderme, önizleme ve sohbet içinde görsel gösterimi
+- 🖼️ Galeriden fotoğraf gönderme, önizleme ve sohbet içinde görsel gösterimi
+- 📷 Kameradan fotoğraf çekip gönderme
 - 📎 PDF / MP4 dosya gönderme
+- ✓✓ Mesaj okundu bilgisinde çift tik; okunduğunda mavi çift tik
 - 🎙️ Sesli arama (WebRTC)
-- 📹 Görüntülü arama (WebRTC)
+- 📹 WhatsApp benzeri tam ekran görüntülü arama arayüzü
 - 🟢 Çevrimiçi/çevrimdışı durumu
 - ⌨️ "Yazıyor..." göstergesi
 - 🗄️ PostgreSQL varsa kalıcı kayıt, yoksa yerel SQLite fallback
@@ -19,16 +22,30 @@ Sadece 2 kişi için, özel kod ile giriş yapılan, sesli/görüntülü arama d
 
 ---
 
-## Fotoğraf Gönderme
+## Fotoğraf ve Kamera Gönderme
 
-Sohbet ekranında iki ayrı buton vardır:
+Sohbet ekranında üç medya butonu vardır:
 
-- `🖼️` Fotoğraf gönderir. PNG, JPG, JPEG, GIF ve WEBP desteklenir.
+- `📷` Kamerayı açar, fotoğraf çeker ve gönderir.
+- `🖼️` Galeriden fotoğraf seçer. PNG, JPG, JPEG, GIF ve WEBP desteklenir.
 - `📎` Dosya gönderir. PDF ve MP4 desteklenir.
 
-Fotoğraf seçildiğinde önce küçük bir önizleme görünür. Kullanıcı **Gönder** ile fotoğrafı gönderir veya **İptal** ile seçimi temizler.
+Galeriden fotoğraf seçildiğinde önce küçük bir önizleme görünür. Kullanıcı **Gönder** ile fotoğrafı gönderir veya **İptal** ile seçimi temizler.
+
+Kamera özelliği tarayıcı izni gerektirir. Mobilde arka/ön kamera geçişi için **Çevir** butonu eklenmiştir.
 
 Backend tarafında fotoğraflar özel olarak `/upload/photo` endpoint'i ile yüklenir. Yüklenen görseller sohbet içinde doğrudan görüntülenir ve tıklanınca büyütülür.
+
+---
+
+## Okundu Bilgisi
+
+Mesajlar karşı tarafın sohbet ekranına yüklendiğinde veya sohbet ekranı aktifken görüldüğünde `messages_read` Socket.IO eventi ile sunucuya bildirilir.
+
+- Gri `✓✓`: mesaj gönderildi, henüz okundu bilgisi yok.
+- Mavi `✓✓`: karşı taraf mesajı okudu.
+
+Okundu bilgisi veritabanında `read_at` alanında saklanır.
 
 ---
 
