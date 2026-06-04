@@ -55,6 +55,7 @@
     position: relative;
     z-index: 10;
     width: 380px;
+    max-width: calc(100vw - 32px);
     background: var(--surface);
     border: 1px solid var(--border);
     padding: 48px 40px;
@@ -167,11 +168,11 @@
 <div class="card">
   <div class="lock-icon">🔐</div>
   <div class="logo">PrivateMsg</div>
-  <div class="subtitle">Şifreli Kanal · Sadece 2 Kişi</div>
+  <div class="subtitle">Özel Kanal · Sadece 2 Kişi</div>
 
   <form method="POST" action="/login">
     <label>Erişim Kodu</label>
-    <input type="password" name="code" placeholder="••••••••" autofocus autocomplete="off" maxlength="20">
+    <input type="password" name="code" placeholder="••••••••" autofocus autocomplete="off" maxlength="20" required>
     <button type="submit" class="btn">Giriş Yap</button>
     {% if error %}
     <div class="error">✗ {{ error }}</div>
