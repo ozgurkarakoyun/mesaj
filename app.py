@@ -15,12 +15,7 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 SQLITE_PATH = os.environ.get('SQLITE_PATH', os.path.join(BASE_DIR, 'data', 'messages.db'))
 TIMEZONE = ZoneInfo(os.environ.get('APP_TIMEZONE', 'Europe/Istanbul'))
 
-IS_PRODUCTION = bool(
-    os.environ.get('RAILWAY_ENVIRONMENT')
-    or os.environ.get('RAILWAY_PROJECT_ID')
-    or os.environ.get('PRODUCTION') == '1'
-)
-
+IS_PRODUCTION = bool(os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('RAILWAY_PROJECT_ID') or os.environ.get('PRODUCTION') == '1')
 SECRET_KEY = os.environ.get('SECRET_KEY')
 if IS_PRODUCTION and not SECRET_KEY:
     raise RuntimeError('SECRET_KEY production ortamında zorunludur.')
@@ -29,10 +24,8 @@ USER1_CODE = os.environ.get('USER1_CODE')
 USER2_CODE = os.environ.get('USER2_CODE')
 USER1_NAME = os.environ.get('USER1_NAME', 'Özgür')
 USER2_NAME = os.environ.get('USER2_NAME', 'Kişi 2')
-
 if IS_PRODUCTION and (not USER1_CODE or not USER2_CODE):
     raise RuntimeError('USER1_CODE ve USER2_CODE production ortamında zorunludur.')
-
 USER1_CODE = USER1_CODE or 'KARA-001'
 USER2_CODE = USER2_CODE or 'KARA-002'
 
@@ -40,13 +33,11 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY or 'local-dev-secret-change-me'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
 IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 FILE_EXTENSIONS = {'mp4', 'pdf'}
 ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | FILE_EXTENSIONS
-
 IMAGE_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
 FILE_MIME_TYPES = {'video/mp4', 'application/pdf'}
 ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | FILE_MIME_TYPES
@@ -54,7 +45,6 @@ ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | FILE_MIME_TYPES
 ROOM = 'private_room'
 socketio = SocketIO(app, cors_allowed_origins=[], async_mode='eventlet')
 online_users = {}
-
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 
@@ -70,10 +60,22 @@ def get_db():
         if db_url.startswith('postgres://'):
             db_url = db_url.replace('postgres://', 'postgresql://', 1)
         return psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
-
     conn = sqlite3.connect(SQLITE_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def add_column_if_missing(conn, column_name, column_def):
+    try:
+        if using_postgres():
+            with conn.cursor() as cur:
+                cur.execute(f'ALTER TABLE messages ADD COLUMN IF NOT EXISTS {column_name} {column_def}')
+        else:
+            cols = conn.execute('PRAGMA table_info(messages)').fetchall()
+            if column_name not in [c['name'] for c in cols]:
+                conn.execute(f'ALTER TABLE messages ADD COLUMN {column_name} {column_def}')
+    except Exception as e:
+        print(f'Migration warning for {column_name}: {e}')
 
 
 def init_db():
@@ -91,9 +93,11 @@ def init_db():
                             text        TEXT,
                             file_url    TEXT,
                             file_name   TEXT,
-                            created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+                            created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+                            read_at     TIMESTAMP
                         )
                     ''')
+                add_column_if_missing(conn, 'read_at', 'TIMESTAMP')
             else:
                 conn.execute('''
                     CREATE TABLE IF NOT EXISTS messages (
@@ -104,9 +108,11 @@ def init_db():
                         text        TEXT,
                         file_url    TEXT,
                         file_name   TEXT,
-                        created_at  TEXT NOT NULL
+                        created_at  TEXT NOT NULL,
+                        read_at     TEXT
                     )
                 ''')
+                add_column_if_missing(conn, 'read_at', 'TEXT')
     finally:
         conn.close()
 
@@ -119,34 +125,35 @@ def save_message(msg):
             with conn:
                 with conn.cursor() as cur:
                     cur.execute('''
-                        INSERT INTO messages (id, user_id, user_name, type, text, file_url, file_name, created_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ''', (
-                        msg['id'], msg['user']['id'], msg['user']['name'], msg['type'],
-                        msg.get('text', ''), msg.get('file_url', ''), msg.get('file_name', ''),
-                        created_at.replace(tzinfo=None),
-                    ))
+                        INSERT INTO messages (id, user_id, user_name, type, text, file_url, file_name, created_at, read_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NULL)
+                    ''', (msg['id'], msg['user']['id'], msg['user']['name'], msg['type'], msg.get('text', ''), msg.get('file_url', ''), msg.get('file_name', ''), created_at.replace(tzinfo=None)))
         else:
             with conn:
                 conn.execute('''
-                    INSERT INTO messages (id, user_id, user_name, type, text, file_url, file_name, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    msg['id'], msg['user']['id'], msg['user']['name'], msg['type'],
-                    msg.get('text', ''), msg.get('file_url', ''), msg.get('file_name', ''),
-                    created_at.isoformat(),
-                ))
+                    INSERT INTO messages (id, user_id, user_name, type, text, file_url, file_name, created_at, read_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                ''', (msg['id'], msg['user']['id'], msg['user']['name'], msg['type'], msg.get('text', ''), msg.get('file_url', ''), msg.get('file_name', ''), created_at.isoformat()))
     finally:
         conn.close()
 
 
 def parse_created_at(value):
+    if not value:
+        return None
     if isinstance(value, datetime):
         return value
     try:
         return datetime.fromisoformat(value)
     except Exception:
-        return datetime.now(TIMEZONE)
+        return None
+
+
+def row_get(row, key, default=None):
+    try:
+        return row[key]
+    except Exception:
+        return default
 
 
 def load_messages(limit=200):
@@ -155,21 +162,17 @@ def load_messages(limit=200):
         if using_postgres():
             with conn.cursor() as cur:
                 cur.execute('''
-                    SELECT * FROM (
-                        SELECT * FROM messages ORDER BY created_at DESC LIMIT %s
-                    ) sub ORDER BY created_at ASC
+                    SELECT * FROM (SELECT * FROM messages ORDER BY created_at DESC LIMIT %s) sub ORDER BY created_at ASC
                 ''', (limit,))
                 rows = cur.fetchall()
         else:
             rows = conn.execute('''
-                SELECT * FROM (
-                    SELECT * FROM messages ORDER BY created_at DESC LIMIT ?
-                ) sub ORDER BY created_at ASC
+                SELECT * FROM (SELECT * FROM messages ORDER BY created_at DESC LIMIT ?) sub ORDER BY created_at ASC
             ''', (limit,)).fetchall()
-
         result = []
         for r in rows:
-            created_at = parse_created_at(r['created_at'])
+            created_at = parse_created_at(r['created_at']) or datetime.now(TIMEZONE)
+            read_at = parse_created_at(row_get(r, 'read_at'))
             result.append({
                 'id': r['id'],
                 'user': {'id': r['user_id'], 'name': r['user_name']},
@@ -179,11 +182,48 @@ def load_messages(limit=200):
                 'file_name': r['file_name'] or '',
                 'timestamp': created_at.strftime('%H:%M'),
                 'date_label': created_at.strftime('%d.%m.%Y'),
+                'read': bool(read_at),
+                'read_at': read_at.strftime('%H:%M') if read_at else '',
             })
         return result
     finally:
         conn.close()
 
+
+def mark_messages_read(message_ids, reader_id):
+    if not message_ids:
+        return []
+    clean_ids = [str(x) for x in message_ids if x]
+    if not clean_ids:
+        return []
+    now = datetime.now(TIMEZONE)
+    conn = get_db()
+    try:
+        if using_postgres():
+            with conn:
+                with conn.cursor() as cur:
+                    cur.execute('''
+                        UPDATE messages
+                           SET read_at = COALESCE(read_at, %s)
+                         WHERE id = ANY(%s) AND user_id <> %s
+                     RETURNING id
+                    ''', (now.replace(tzinfo=None), clean_ids, reader_id))
+                    rows = cur.fetchall()
+                    return [r['id'] for r in rows]
+        with conn:
+            placeholders = ','.join(['?'] * len(clean_ids))
+            conn.execute(f'''
+                UPDATE messages
+                   SET read_at = COALESCE(read_at, ?)
+                 WHERE id IN ({placeholders}) AND user_id <> ?
+            ''', [now.isoformat(), *clean_ids, reader_id])
+            rows = conn.execute(f'''
+                SELECT id FROM messages
+                 WHERE id IN ({placeholders}) AND user_id <> ? AND read_at IS NOT NULL
+            ''', [*clean_ids, reader_id]).fetchall()
+            return [r['id'] for r in rows]
+    finally:
+        conn.close()
 
 try:
     init_db()
@@ -211,10 +251,10 @@ def allowed_photo(file):
 
 
 def save_uploaded_file(file):
-    ext = file_extension(file.filename)
+    ext = file_extension(file.filename) or 'jpg'
     filename = f'{uuid.uuid4().hex}.{ext}'
     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    return {'url': f'/static/uploads/{filename}', 'name': file.filename}
+    return {'url': f'/static/uploads/{filename}', 'name': file.filename or filename}
 
 
 def validate_code(code):
@@ -233,7 +273,6 @@ def index():
         return redirect(url_for('chat'))
     return render_template('login.html')
 
-
 @app.route('/login', methods=['POST'])
 @limiter.limit('5 per minute')
 def login():
@@ -244,12 +283,10 @@ def login():
         return redirect(url_for('chat'))
     return render_template('login.html', error='Geçersiz kod'), 401
 
-
 @app.route('/logout')
 def logout():
     session.pop('user', None)
     return redirect(url_for('index'))
-
 
 @app.route('/chat')
 def chat():
@@ -257,13 +294,11 @@ def chat():
         return redirect(url_for('index'))
     return render_template('chat.html', user=session['user'])
 
-
 @app.route('/api/messages')
 def api_messages():
     if 'user' not in session:
         return jsonify({'error': 'Yetkisiz'}), 401
     return jsonify(load_messages(200))
-
 
 @app.route('/upload/photo', methods=['POST'])
 def upload_photo():
@@ -271,16 +306,12 @@ def upload_photo():
         return jsonify({'error': 'Yetkisiz'}), 401
     if 'photo' not in request.files:
         return jsonify({'error': 'Fotoğraf yok'}), 400
-
     photo = request.files['photo']
     if photo.filename == '':
-        return jsonify({'error': 'Fotoğraf seçilmedi'}), 400
+        photo.filename = 'camera.jpg'
     if not allowed_photo(photo):
         return jsonify({'error': 'Sadece PNG, JPG, JPEG, GIF veya WEBP fotoğraf yüklenebilir'}), 400
-
-    saved = save_uploaded_file(photo)
-    return jsonify({**saved, 'type': 'image'})
-
+    return jsonify({**save_uploaded_file(photo), 'type': 'image'})
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -288,17 +319,13 @@ def upload_file():
         return jsonify({'error': 'Yetkisiz'}), 401
     if 'file' not in request.files:
         return jsonify({'error': 'Dosya yok'}), 400
-
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'Dosya seçilmedi'}), 400
-
     if not allowed_file(file.filename) or not allowed_mime(file):
         return jsonify({'error': 'İzin verilmeyen dosya türü'}), 400
-
-    saved = save_uploaded_file(file)
     upload_type = 'image' if file.mimetype in IMAGE_MIME_TYPES else 'file'
-    return jsonify({**saved, 'type': upload_type})
+    return jsonify({**save_uploaded_file(file), 'type': upload_type})
 
 # ── SOCKETIO ─────────────────────────────────────────────────────────────────
 
@@ -311,7 +338,6 @@ def on_join(data):
     online_users[request.sid] = user
     emit('user_status', {'user': user, 'online': list(online_users.values()), 'event': 'joined'}, room=ROOM)
 
-
 @socketio.on('disconnect')
 def on_disconnect():
     if request.sid in online_users:
@@ -319,16 +345,13 @@ def on_disconnect():
         leave_room(ROOM)
         emit('user_status', {'user': user, 'online': list(online_users.values()), 'event': 'left'}, room=ROOM)
 
-
 @socketio.on('message')
 def on_message(data):
     if 'user' not in session:
         return
-
     msg_type = data.get('type', 'text')
     if msg_type not in {'text', 'image', 'file'}:
         return
-
     user = session['user']
     now = datetime.now(TIMEZONE)
     msg = {
@@ -340,15 +363,23 @@ def on_message(data):
         'file_name': data.get('file_name', ''),
         'timestamp': now.strftime('%H:%M'),
         'date_label': now.strftime('%d.%m.%Y'),
+        'read': False,
+        'read_at': '',
     }
-
     try:
         save_message(msg)
     except Exception as e:
         print(f'Save message error: {e}')
-
     emit('message', msg, room=ROOM)
 
+@socketio.on('messages_read')
+def on_messages_read(data):
+    if 'user' not in session:
+        return
+    ids = data.get('ids', []) if isinstance(data, dict) else []
+    read_ids = mark_messages_read(ids, session['user']['id'])
+    if read_ids:
+        emit('messages_read', {'ids': read_ids, 'reader': session['user']}, room=ROOM)
 
 @socketio.on('typing')
 def on_typing(data):
@@ -356,13 +387,11 @@ def on_typing(data):
         return
     emit('typing', {'user': session['user'], 'typing': bool(data.get('typing', False))}, room=ROOM, include_self=False)
 
-
 @socketio.on('webrtc_offer')
 def on_offer(data):
     if 'user' not in session:
         return
     emit('webrtc_offer', {**data, 'from': session.get('user', {})}, room=ROOM, include_self=False)
-
 
 @socketio.on('webrtc_answer')
 def on_answer(data):
@@ -370,13 +399,11 @@ def on_answer(data):
         return
     emit('webrtc_answer', {**data, 'from': session.get('user', {})}, room=ROOM, include_self=False)
 
-
 @socketio.on('webrtc_ice')
 def on_ice(data):
     if 'user' not in session:
         return
     emit('webrtc_ice', data, room=ROOM, include_self=False)
-
 
 @socketio.on('call_request')
 def on_call_request(data):
@@ -384,20 +411,17 @@ def on_call_request(data):
         return
     emit('call_request', {**data, 'from': session.get('user', {})}, room=ROOM, include_self=False)
 
-
 @socketio.on('call_response')
 def on_call_response(data):
     if 'user' not in session:
         return
     emit('call_response', data, room=ROOM, include_self=False)
 
-
 @socketio.on('call_end')
 def on_call_end(data):
     if 'user' not in session:
         return
     emit('call_end', data or {}, room=ROOM, include_self=False)
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
