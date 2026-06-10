@@ -21,14 +21,16 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 if IS_PRODUCTION and not SECRET_KEY:
     raise RuntimeError('SECRET_KEY production ortamında zorunludur.')
 
-USER1_CODE = os.environ.get('USER1_CODE')
-USER2_CODE = os.environ.get('USER2_CODE')
+USER1_CODE = os.environ.get('USER1_CODE') or '1111'
+USER2_CODE = os.environ.get('USER2_CODE') or '2222'
 USER1_NAME = os.environ.get('USER1_NAME', 'Özgür')
 USER2_NAME = os.environ.get('USER2_NAME', 'Kişi 2')
-if IS_PRODUCTION and (not USER1_CODE or not USER2_CODE):
-    raise RuntimeError('USER1_CODE ve USER2_CODE production ortamında zorunludur.')
-USER1_CODE = USER1_CODE or 'KARA-001'
-USER2_CODE = USER2_CODE or 'KARA-002'
+def clean_pin(value):
+    return ''.join(ch for ch in str(value or '') if ch.isdigit())[:4]
+USER1_CODE = clean_pin(USER1_CODE)
+USER2_CODE = clean_pin(USER2_CODE)
+if IS_PRODUCTION and (len(USER1_CODE) != 4 or len(USER2_CODE) != 4 or USER1_CODE == USER2_CODE):
+    raise RuntimeError('USER1_CODE ve USER2_CODE production ortamında farklı 4 haneli PIN olmalıdır.')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY or 'local-dev-secret-change-me'
@@ -232,9 +234,9 @@ def save_uploaded_file(file):
     return {'url':f'/media/{filename}','name':file.filename or filename}
 
 def validate_code(code):
-    code=(code or '').strip().upper()
-    if code==USER1_CODE.upper(): return {'id':'user1','name':USER1_NAME}
-    if code==USER2_CODE.upper(): return {'id':'user2','name':USER2_NAME}
+    pin=clean_pin(code)
+    if pin==USER1_CODE: return {'id':'user1','name':USER1_NAME}
+    if pin==USER2_CODE: return {'id':'user2','name':USER2_NAME}
     return None
 
 @app.route('/')
@@ -247,7 +249,7 @@ def login():
     user=validate_code(request.form.get('code',''))
     if user:
         session.clear(); session['user']=user; update_last_seen(user); return redirect(url_for('chat'))
-    return render_template('login.html', error='Geçersiz kod'), 401
+    return render_template('login.html', error='Geçersiz PIN'), 401
 @app.route('/logout')
 def logout():
     user=session.get('user'); update_last_seen(user); session.pop('user', None); return redirect(url_for('index'))
@@ -269,8 +271,7 @@ def api_delete_message(message_id):
     if 'user' not in session: return jsonify({'error':'Yetkisiz'}),401
     deleted=delete_message(message_id, session['user']['id'])
     if not deleted: return jsonify({'error':'Mesaj bulunamadı veya silme yetkiniz yok'}),404
-    emit_payload={'id': message_id}
-    socketio.emit('message_deleted', emit_payload, room=ROOM)
+    socketio.emit('message_deleted', {'id': message_id}, room=ROOM)
     return jsonify({'ok': True, 'id': message_id})
 @app.route('/media/<path:filename>')
 def media(filename):
