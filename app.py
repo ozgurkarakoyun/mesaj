@@ -1,11 +1,12 @@
 import os
 import uuid
 import sqlite3
+import imghdr
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, send_from_directory, abort
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -32,15 +33,22 @@ USER2_CODE = USER2_CODE or 'KARA-002'
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY or 'local-dev-secret-change-me'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=IS_PRODUCTION,
+    SESSION_COOKIE_SAMESITE='Lax',
+)
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
 IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-FILE_EXTENSIONS = {'mp4', 'pdf'}
-ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | FILE_EXTENSIONS
+VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov'}
+DOC_EXTENSIONS = {'pdf'}
+ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | DOC_EXTENSIONS
 IMAGE_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
-FILE_MIME_TYPES = {'video/mp4', 'application/pdf'}
-ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | FILE_MIME_TYPES
+VIDEO_MIME_TYPES = {'video/mp4', 'video/webm', 'video/quicktime'}
+DOC_MIME_TYPES = {'application/pdf'}
+ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | VIDEO_MIME_TYPES | DOC_MIME_TYPES
 
 ROOM = 'private_room'
 socketio = SocketIO(app, cors_allowed_origins=[], async_mode='eventlet')
@@ -250,11 +258,31 @@ def allowed_photo(file):
     return file_extension(file.filename) in IMAGE_EXTENSIONS and file.mimetype in IMAGE_MIME_TYPES
 
 
+def is_valid_upload_signature(file, ext):
+    head = file.stream.read(512)
+    file.stream.seek(0)
+    ext = ext.lower()
+    if ext in {'jpg', 'jpeg', 'png', 'gif', 'webp'}:
+        detected = imghdr.what(None, head)
+        if ext in {'jpg', 'jpeg'}:
+            return detected == 'jpeg'
+        return detected == ext
+    if ext == 'pdf':
+        return head.startswith(b'%PDF')
+    if ext == 'mp4':
+        return b'ftyp' in head[:64]
+    if ext == 'webm':
+        return head.startswith(b'\x1a\x45\xdf\xa3')
+    if ext == 'mov':
+        return b'ftyp' in head[:64]
+    return False
+
+
 def save_uploaded_file(file):
     ext = file_extension(file.filename) or 'jpg'
     filename = f'{uuid.uuid4().hex}.{ext}'
     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    return {'url': f'/static/uploads/{filename}', 'name': file.filename or filename}
+    return {'url': f'/media/{filename}', 'name': file.filename or filename}
 
 
 def validate_code(code):
@@ -300,7 +328,16 @@ def api_messages():
         return jsonify({'error': 'Yetkisiz'}), 401
     return jsonify(load_messages(200))
 
+@app.route('/media/<path:filename>')
+def media(filename):
+    if 'user' not in session:
+        abort(401)
+    if '/' in filename or '\\' in filename or '..' in filename:
+        abort(404)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=False)
+
 @app.route('/upload/photo', methods=['POST'])
+@limiter.limit('20 per minute')
 def upload_photo():
     if 'user' not in session:
         return jsonify({'error': 'Yetkisiz'}), 401
@@ -309,11 +346,13 @@ def upload_photo():
     photo = request.files['photo']
     if photo.filename == '':
         photo.filename = 'camera.jpg'
-    if not allowed_photo(photo):
-        return jsonify({'error': 'Sadece PNG, JPG, JPEG, GIF veya WEBP fotoğraf yüklenebilir'}), 400
+    ext = file_extension(photo.filename)
+    if not allowed_photo(photo) or not is_valid_upload_signature(photo, ext):
+        return jsonify({'error': 'Sadece geçerli PNG, JPG, JPEG, GIF veya WEBP fotoğraf yüklenebilir'}), 400
     return jsonify({**save_uploaded_file(photo), 'type': 'image'})
 
 @app.route('/upload', methods=['POST'])
+@limiter.limit('12 per minute')
 def upload_file():
     if 'user' not in session:
         return jsonify({'error': 'Yetkisiz'}), 401
@@ -322,9 +361,10 @@ def upload_file():
     file = request.files['file']
     if file.filename == '':
         return jsonify({'error': 'Dosya seçilmedi'}), 400
-    if not allowed_file(file.filename) or not allowed_mime(file):
-        return jsonify({'error': 'İzin verilmeyen dosya türü'}), 400
-    upload_type = 'image' if file.mimetype in IMAGE_MIME_TYPES else 'file'
+    ext = file_extension(file.filename)
+    if not allowed_file(file.filename) or not allowed_mime(file) or not is_valid_upload_signature(file, ext):
+        return jsonify({'error': 'İzin verilmeyen veya geçersiz dosya türü'}), 400
+    upload_type = 'image' if file.mimetype in IMAGE_MIME_TYPES else ('video' if file.mimetype in VIDEO_MIME_TYPES else 'file')
     return jsonify({**save_uploaded_file(file), 'type': upload_type})
 
 # ── SOCKETIO ─────────────────────────────────────────────────────────────────
@@ -347,20 +387,24 @@ def on_disconnect():
 
 @socketio.on('message')
 def on_message(data):
-    if 'user' not in session:
+    if 'user' not in session or not isinstance(data, dict):
         return
     msg_type = data.get('type', 'text')
-    if msg_type not in {'text', 'image', 'file'}:
+    if msg_type not in {'text', 'image', 'file', 'video', 'location'}:
         return
     user = session['user']
     now = datetime.now(TIMEZONE)
+    text = (data.get('text', '') or '')[:4000]
+    file_url = (data.get('file_url', '') or '')[:500]
+    if file_url and not file_url.startswith('/media/'):
+        return
     msg = {
         'id': uuid.uuid4().hex,
         'user': user,
-        'text': (data.get('text', '') or '')[:4000],
+        'text': text,
         'type': msg_type,
-        'file_url': data.get('file_url', ''),
-        'file_name': data.get('file_name', ''),
+        'file_url': file_url,
+        'file_name': (data.get('file_name', '') or '')[:255],
         'timestamp': now.strftime('%H:%M'),
         'date_label': now.strftime('%d.%m.%Y'),
         'read': False,
