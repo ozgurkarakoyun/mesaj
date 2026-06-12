@@ -1,5 +1,7 @@
 import sitecustomize
 import app as chat_app
+from flask import session
+from flask_socketio import emit
 
 chat_app.IMAGE_EXTENSIONS.update({'heic', 'heif'})
 chat_app.VIDEO_EXTENSIONS.update({'m4v'})
@@ -144,6 +146,25 @@ def get_public_locations():
         print(f'Location load warning: {exc}')
     merged.update(dict(chat_app.user_locations))
     return {uid: {**loc, 'url': f"https://maps.google.com/?q={loc['lat']},{loc['lng']}"} for uid, loc in merged.items()}
+
+
+chat_app.tap_state = {}
+
+
+@chat_app.socketio.on('tap')
+def on_tap(data):
+    if 'user' not in session or not isinstance(data, dict):
+        return
+    mid = str(data.get('id') or '')[:100]
+    if not mid:
+        return
+    uid = session['user']['id']
+    box = chat_app.tap_state.setdefault(mid, {})
+    if uid in box:
+        box.pop(uid, None)
+    else:
+        box[uid] = session['user']['name']
+    emit('tap', {'id': mid, 'count': len(box), 'users': box}, room=chat_app.ROOM)
 
 
 try:
