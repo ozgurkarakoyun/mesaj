@@ -253,11 +253,15 @@ def get_public_locations():
 def patch_chat_html(html, user):
     html = html.replace(
         '.stat{font-size:12px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-        '.stat{font-size:12px;opacity:.95;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15}.stat .sd{font-weight:700}.stat .st{font-size:11px;opacity:.9}.stat .mapbtn{margin-top:3px;border:0;border-radius:999px;background:#ffffff2b;color:white;padding:3px 9px;font-size:11px;font-weight:800}'
+        '.stat{font-size:12px;opacity:.95;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15}.stat .sd{font-weight:700}.stat .st{font-size:11px;opacity:.9}.stat .mapbtn{margin-top:3px;border:0;border-radius:999px;background:#ffffff2b;color:white;padding:3px 9px;font-size:11px;font-weight:800}.ib.mapicon{background:#25d366;color:#063b2f}'
     )
     html = html.replace(
         '<div class="stat" id="statusText">Bağlanıyor...</div>',
         '<div class="stat" id="statusText"><div class="sd">Bağlanıyor...</div><div class="st"></div><button class="mapbtn" id="topMapBtn" type="button" style="display:none">📍 Konumu aç</button></div>'
+    )
+    html = html.replace(
+        '<button class="ib" onclick="toggleSearch()">🔎</button>',
+        '<button class="ib mapicon" id="topMapIcon" type="button" title="Konumu aç" style="display:none">📍</button><button class="ib" onclick="toggleSearch()">🔎</button>'
     )
     script = f'''
 <script>
@@ -271,20 +275,26 @@ def patch_chat_html(html, user):
     if(m) return {{date:m[1], time:m[2]}};
     return {{date:raw || 'Çevrimdışı', time:''}};
   }}
+  function openOtherLocation(){{
+    if(otherLocationUrl) window.open(otherLocationUrl, '_blank', 'noopener');
+  }}
   function updateTopMapButton(show, url){{
-    const btn = document.getElementById('topMapBtn');
-    if(!btn) return;
     otherLocationUrl = url || '';
-    btn.style.display = show && otherLocationUrl ? 'inline-block' : 'none';
+    const btn = document.getElementById('topMapBtn');
+    const icon = document.getElementById('topMapIcon');
+    const display = show && otherLocationUrl ? '' : 'none';
+    if(btn) {{ btn.style.display = show && otherLocationUrl ? 'inline-block' : 'none'; btn.onclick = openOtherLocation; }}
+    if(icon) {{ icon.style.display = display; icon.onclick = openOtherLocation; }}
   }}
   function setStatus(dateText, timeText, showMapButton, mapUrl){{
     const el = document.getElementById('statusText');
     if(!el) return;
-    el.innerHTML = '<div class="sd"></div><div class="st"></div><button class="mapbtn" id="topMapBtn" type="button" style="display:none">📍 Konumu aç</button>';
+    let btn = document.getElementById('topMapBtn');
+    if(!btn) {{
+      el.innerHTML = '<div class="sd"></div><div class="st"></div><button class="mapbtn" id="topMapBtn" type="button" style="display:none">📍 Konumu aç</button>';
+    }}
     el.querySelector('.sd').textContent = dateText || '';
     el.querySelector('.st').textContent = timeText || '';
-    const btn = document.getElementById('topMapBtn');
-    if(btn) btn.onclick = function(){{ if(otherLocationUrl) window.open(otherLocationUrl, '_blank', 'noopener'); }};
     updateTopMapButton(showMapButton, mapUrl);
   }}
   function publishOwnLocation(){{
@@ -319,9 +329,14 @@ def patch_chat_html(html, user):
       return;
     }}
     const last = splitLastSeen(other.last_seen || ((other.last_seen_date || '') + ' ' + (other.last_seen_time || '')));
+    if(loc) {{
+      setStatus(last.date, 'Son konum: ' + (loc.updated_at || last.time || ''), true, loc.url);
+      return;
+    }}
     setStatus(last.date, last.time, false, '');
   }}
   function refreshTwoLineStatus(){{
+    publishOwnLocation();
     fetch('/api/status', {{cache:'no-store'}})
       .then(r => r.ok ? r.json() : null)
       .then(applyStatusPayload)
@@ -411,7 +426,7 @@ def on_join(data):
 @socketio.on('disconnect')
 def on_disconnect():
     if request.sid in online_users:
-        user=online_users.pop(request.sid); user_locations.pop(user['id'], None); update_last_seen(user); leave_room(ROOM)
+        user=online_users.pop(request.sid); update_last_seen(user); leave_room(ROOM)
         emit('user_status', {'user':user,'online':list(online_users.values()),'users':load_users_status(),'locations':get_public_locations(),'event':'left'}, room=ROOM)
 @socketio.on('user_location')
 def on_user_location(data):
