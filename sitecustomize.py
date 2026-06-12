@@ -9,6 +9,14 @@ def _fix_location_button_html(html):
     if not isinstance(html, str):
         return html
     html = html.replace(
+        '.act{display:flex;gap:3px}',
+        '.act{display:flex;gap:3px;align-items:center;flex:none}.ib.mapicon{display:inline-grid!important;place-items:center!important;background:#25d366!important;color:#063b2f!important;opacity:1!important;visibility:visible!important;flex:0 0 auto!important}'
+    )
+    html = html.replace(
+        '@media(max-width:430px){.top{min-height:60px}',
+        '@media(max-width:430px){.top{min-height:60px;padding-right:5px;gap:6px}.who{min-width:0}.act{gap:2px;flex:0 0 auto}.ib.mapicon{width:33px!important;height:34px!important;font-size:17px!important}'
+    )
+    html = html.replace(
         'id="topMapIcon" type="button" title="Konumu aç" style="display:none"',
         'id="topMapIcon" type="button" title="Konumu aç"'
     )
