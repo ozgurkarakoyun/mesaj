@@ -35,7 +35,7 @@ if IS_PRODUCTION and (len(USER1_CODE) != 4 or len(USER2_CODE) != 4 or USER1_CODE
 app = Flask(__name__)
 app.config['SECRET_KEY'] = SECRET_KEY or 'local-dev-secret-change-me'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_UPLOAD_MB', '200')) * 1024 * 1024
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=IS_PRODUCTION, SESSION_COOKIE_SAMESITE='Lax')
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
@@ -44,9 +44,10 @@ VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov'}
 DOC_EXTENSIONS = {'pdf'}
 ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | DOC_EXTENSIONS
 IMAGE_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
-VIDEO_MIME_TYPES = {'video/mp4', 'video/webm', 'video/quicktime'}
+VIDEO_MIME_TYPES = {'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'}
 DOC_MIME_TYPES = {'application/pdf'}
 ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | VIDEO_MIME_TYPES | DOC_MIME_TYPES
+MESSAGE_TYPES = {'text', 'image', 'file', 'video', 'location', 'live_location'}
 
 ROOM = 'private_room'
 socketio = SocketIO(app, cors_allowed_origins=[], async_mode='eventlet')
@@ -200,7 +201,13 @@ def load_users_status():
         out=[]
         for r in rows:
             last=parse_created_at(row_get(r,'last_seen'))
-            out.append({'id':r['id'],'name':r['name'],'last_seen':last.strftime('%d.%m.%Y %H:%M') if last else ''})
+            out.append({
+                'id':r['id'],
+                'name':r['name'],
+                'last_seen':last.strftime('%d.%m.%Y %H:%M') if last else '',
+                'last_seen_date':last.strftime('%d.%m.%Y') if last else '',
+                'last_seen_time':last.strftime('%H:%M') if last else ''
+            })
         return out
     finally:
         conn.close()
@@ -218,13 +225,13 @@ def allowed_mime(file): return file.mimetype in ALLOWED_MIME_TYPES
 def allowed_photo(file): return file_extension(file.filename) in IMAGE_EXTENSIONS and file.mimetype in IMAGE_MIME_TYPES
 
 def is_valid_upload_signature(file, ext):
-    head=file.stream.read(512); file.stream.seek(0); ext=ext.lower()
+    head=file.stream.read(4096); file.stream.seek(0); ext=ext.lower()
     if ext in {'jpg','jpeg','png','gif','webp'}:
         detected=imghdr.what(None, head)
         if ext in {'jpg','jpeg'}: return detected=='jpeg'
         return detected==ext
     if ext=='pdf': return head.startswith(b'%PDF')
-    if ext in {'mp4','mov'}: return b'ftyp' in head[:64]
+    if ext in {'mp4','mov'}: return b'ftyp' in head
     if ext=='webm': return head.startswith(b'\x1a\x45\xdf\xa3')
     return False
 
@@ -314,7 +321,7 @@ def on_disconnect():
 def on_message(data):
     if 'user' not in session or not isinstance(data, dict): return
     msg_type=data.get('type','text')
-    if msg_type not in {'text','image','file','video','location'}: return
+    if msg_type not in MESSAGE_TYPES: return
     user=session['user']; update_last_seen(user); now=datetime.now(TIMEZONE); text=(data.get('text','') or '')[:4000]; file_url=(data.get('file_url','') or '')[:500]
     if file_url and not file_url.startswith('/media/'): return
     msg={'id':uuid.uuid4().hex,'user':user,'text':text,'type':msg_type,'file_url':file_url,'file_name':(data.get('file_name','') or '')[:255],'timestamp':now.strftime('%H:%M'),'date_label':now.strftime('%d.%m.%Y'),'read':False,'read_at':''}
