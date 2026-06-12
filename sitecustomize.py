@@ -2,7 +2,8 @@ import flask
 
 _original_make_response = flask.Flask.make_response
 
-STATUS_STYLE = '<style id="statusLinesPatch">#statusText{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.18!important}#statusText .sd{display:block!important;font-weight:700!important}#statusText .st{display:block!important;font-size:11px!important;opacity:.95!important}</style>'
+STATUS_STYLE = '<style id="statusLinesPatch">#statusText{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.18!important}#statusText .sd{display:block!important;font-weight:700!important}#statusText .st{display:block!important;font-size:11px!important;opacity:.95!important}.hb{border:0;border-radius:999px;background:#fff8;padding:1px 5px;margin-right:4px;font-size:12px}.hb.on{background:#ffdce5}</style>'
+HEART_SCRIPT = '<script id="heartPatch">setInterval(function(){document.querySelectorAll(".bub").forEach(function(b,i){if(b.querySelector(".hb"))return;var m=b.querySelector(".meta")||b;var x=document.createElement("button");x.className="hb";x.type="button";x.textContent="♡";x.onclick=function(e){e.stopPropagation();x.classList.toggle("on");x.textContent=x.classList.contains("on")?"❤️":"♡"};m.insertBefore(x,m.firstChild)})},1200)</script>'
 
 
 def _dedupe_map_button(html):
@@ -34,6 +35,8 @@ def _dedupe_map_button(html):
 
     if 'statusLinesPatch' not in html:
         html = html.replace('</head>', STATUS_STYLE + '</head>')
+    if 'heartPatch' not in html:
+        html = html.replace('</body>', HEART_SCRIPT + '</body>')
     html = html.replace('accept="image/png,image/jpeg,image/gif,image/webp"', 'accept="image/*"')
     html = html.replace('accept="application/pdf,video/mp4,video/webm,video/quicktime"', 'accept="application/pdf,video/*"')
     return html
