@@ -1,1 +1,2 @@
-x = 1
+import sitecustomize
+from app import app
