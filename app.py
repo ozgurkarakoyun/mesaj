@@ -246,6 +246,90 @@ def validate_code(code):
     if pin==USER2_CODE: return {'id':'user2','name':USER2_NAME}
     return None
 
+def patch_chat_html(html, user):
+    html = html.replace(
+        '.stat{font-size:12px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        '.stat{font-size:12px;opacity:.95;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15}.stat .sd{font-weight:700}.stat .st{font-size:11px;opacity:.9}'
+    )
+    html = html.replace(
+        '<div class="stat" id="statusText">Bağlanıyor...</div>',
+        '<div class="stat" id="statusText"><div class="sd">Bağlanıyor...</div><div class="st"></div></div>'
+    )
+    live_button = '<button class="at" onclick="startLiveLocation()">🛰️<small>8s Canlı</small></button>'
+    if 'startLiveLocation()' not in html:
+        html = html.replace('<button class="at" onclick="sendLocation()">📍<small>Konum</small></button>', '<button class="at" onclick="sendLocation()">📍<small>Konum</small></button>' + live_button)
+    script = f'''
+<script>
+(function(){{
+  const CURRENT_USER_ID = {user.get('id', '')!r};
+  const LIVE_LOCATION_HOURS = 8;
+  const LIVE_LOCATION_INTERVAL_MS = 60000;
+  const LIVE_LOCATION_TOTAL_MS = LIVE_LOCATION_HOURS * 60 * 60 * 1000;
+  let liveLocationWatchId = null;
+  let liveLocationTimerId = null;
+  function splitLastSeen(value){{
+    const raw = String(value || '').trim();
+    const m = raw.match(/^(\d{{2}}\.\d{{2}}\.\d{{4}})\s+(\d{{2}}:\d{{2}})/);
+    if(m) return {{date:m[1], time:m[2]}};
+    return {{date:raw || 'Çevrimdışı', time:''}};
+  }}
+  function setStatus(dateText, timeText){{
+    const el = document.getElementById('statusText');
+    if(!el) return;
+    el.innerHTML = '<div class="sd"></div><div class="st"></div>';
+    el.querySelector('.sd').textContent = dateText || '';
+    el.querySelector('.st').textContent = timeText || '';
+  }}
+  function refreshTwoLineStatus(){{
+    fetch('/api/status', {{cache:'no-store'}})
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {{
+        if(!data || !Array.isArray(data.users)) return;
+        const online = Array.isArray(data.online) ? data.online : [];
+        const other = data.users.find(u => u.id !== CURRENT_USER_ID) || data.users[0];
+        if(!other) return;
+        if(online.some(u => u.id === other.id)) {{ setStatus('Çevrimiçi', ''); return; }}
+        const last = splitLastSeen(other.last_seen || ((other.last_seen_date || '') + ' ' + (other.last_seen_time || '')));
+        setStatus(last.date, last.time);
+      }})
+      .catch(() => {{}});
+  }}
+  window.startLiveLocation = function(){{
+    if(!navigator.geolocation) {{ alert('Bu cihazda konum desteklenmiyor.'); return; }}
+    if(liveLocationWatchId !== null) {{ alert('Canlı konum zaten aktif.'); return; }}
+    const startedAt = Date.now();
+    const expiresAt = startedAt + LIVE_LOCATION_TOTAL_MS;
+    const sendLivePoint = (pos) => {{
+      if(Date.now() > expiresAt) {{ window.stopLiveLocation && window.stopLiveLocation(true); return; }}
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const accuracy = pos.coords.accuracy || null;
+      const mapsUrl = 'https://maps.google.com/?q=' + lat + ',' + lng;
+      const payload = {{lat,lng,accuracy,started_at:new Date(startedAt).toISOString(),expires_at:new Date(expiresAt).toISOString(),url:mapsUrl}};
+      if(window.socket && typeof window.socket.emit === 'function') {{
+        window.socket.emit('message', {{type:'live_location', text: JSON.stringify(payload)}});
+      }} else if(typeof socket !== 'undefined' && socket && typeof socket.emit === 'function') {{
+        socket.emit('message', {{type:'live_location', text: JSON.stringify(payload)}});
+      }}
+    }};
+    liveLocationWatchId = navigator.geolocation.watchPosition(sendLivePoint, err => alert('Konum alınamadı: ' + err.message), {{enableHighAccuracy:true, maximumAge:15000, timeout:20000}});
+    liveLocationTimerId = setTimeout(() => window.stopLiveLocation && window.stopLiveLocation(true), LIVE_LOCATION_TOTAL_MS);
+    alert('8 saat canlı konum paylaşımı başladı. Tarayıcı açık kaldığı sürece güncellenecek.');
+  }};
+  window.stopLiveLocation = function(expired){{
+    if(liveLocationWatchId !== null) navigator.geolocation.clearWatch(liveLocationWatchId);
+    liveLocationWatchId = null;
+    if(liveLocationTimerId) clearTimeout(liveLocationTimerId);
+    liveLocationTimerId = null;
+    if(expired) alert('Canlı konum paylaşımı sona erdi.');
+  }};
+  refreshTwoLineStatus();
+  setInterval(refreshTwoLineStatus, 7000);
+}})();
+</script>
+'''
+    return html.replace('</body>', script + '</body>')
+
 @app.route('/')
 def index():
     if 'user' in session: return redirect(url_for('chat'))
@@ -263,7 +347,8 @@ def logout():
 @app.route('/chat')
 def chat():
     if 'user' not in session: return redirect(url_for('index'))
-    return render_template('chat.html', user=session['user'])
+    html = render_template('chat.html', user=session['user'])
+    return patch_chat_html(html, session['user'])
 @app.route('/api/messages')
 def api_messages():
     if 'user' not in session: return jsonify({'error':'Yetkisiz'}),401
