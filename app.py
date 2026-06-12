@@ -305,29 +305,37 @@ def patch_chat_html(html, user):
     }};
     locationWatchId = navigator.geolocation.watchPosition(sendPosition, function(){{}}, {{enableHighAccuracy:true, maximumAge:30000, timeout:20000}});
   }}
+  function applyStatusPayload(data){{
+    if(!data || !Array.isArray(data.users)) return;
+    const online = Array.isArray(data.online) ? data.online : [];
+    const locations = data.locations || {{}};
+    const other = data.users.find(u => u.id !== CURRENT_USER_ID) || data.users[0];
+    if(!other) return;
+    const isOtherOnline = online.some(u => u.id === other.id);
+    const loc = locations[other.id];
+    if(isOtherOnline) {{
+      setStatus('Çevrimiçi', loc ? 'Konum hazır' : 'Konum bekleniyor', !!loc, loc ? loc.url : '');
+      publishOwnLocation();
+      return;
+    }}
+    const last = splitLastSeen(other.last_seen || ((other.last_seen_date || '') + ' ' + (other.last_seen_time || '')));
+    setStatus(last.date, last.time, false, '');
+  }}
   function refreshTwoLineStatus(){{
     fetch('/api/status', {{cache:'no-store'}})
       .then(r => r.ok ? r.json() : null)
-      .then(data => {{
-        if(!data || !Array.isArray(data.users)) return;
-        const online = Array.isArray(data.online) ? data.online : [];
-        const locations = data.locations || {{}};
-        const other = data.users.find(u => u.id !== CURRENT_USER_ID) || data.users[0];
-        if(!other) return;
-        const isOtherOnline = online.some(u => u.id === other.id);
-        const loc = locations[other.id];
-        if(isOtherOnline) {{
-          setStatus('Çevrimiçi', loc ? 'Konum hazır' : 'Konum bekleniyor', !!loc, loc ? loc.url : '');
-          publishOwnLocation();
-          return;
-        }}
-        const last = splitLastSeen(other.last_seen || ((other.last_seen_date || '') + ' ' + (other.last_seen_time || '')));
-        setStatus(last.date, last.time, false, '');
-      }})
+      .then(applyStatusPayload)
       .catch(() => {{}});
   }}
+  function attachStatusSocketListener(){{
+    const s = (window.socket && typeof window.socket.on === 'function') ? window.socket : ((typeof socket !== 'undefined' && socket && typeof socket.on === 'function') ? socket : null);
+    if(!s || s.__onlineLocationStatusBound) return;
+    s.__onlineLocationStatusBound = true;
+    s.on('user_status', applyStatusPayload);
+  }}
   refreshTwoLineStatus();
-  setInterval(refreshTwoLineStatus, 7000);
+  attachStatusSocketListener();
+  setInterval(function(){{ refreshTwoLineStatus(); attachStatusSocketListener(); }}, 7000);
 }})();
 </script>
 '''
