@@ -8,28 +8,29 @@ def _dedupe_map_button(html):
         return html
 
     marker = 'id="topMapIcon"'
-    if marker not in html:
-        return html
+    if marker in html:
+        parts = html.split('<button')
+        output = [parts[0]]
+        seen = False
 
-    parts = html.split('<button')
-    output = [parts[0]]
-    seen = False
+        for part in parts[1:]:
+            chunk = '<button' + part
+            if marker in chunk:
+                if seen:
+                    end = chunk.find('</button>')
+                    if end != -1:
+                        chunk = chunk[end + len('</button>'):]
+                else:
+                    seen = True
+                    chunk = chunk.replace(' style="display:none"', '')
+            output.append(chunk)
 
-    for part in parts[1:]:
-        chunk = '<button' + part
-        if marker in chunk:
-            if seen:
-                end = chunk.find('</button>')
-                if end != -1:
-                    chunk = chunk[end + len('</button>'):]
-            else:
-                seen = True
-                chunk = chunk.replace(' style="display:none"', '')
-        output.append(chunk)
+        html = ''.join(output)
+        html = html.replace("const display = show && otherLocationUrl ? '' : 'none';", "const display = '';")
+        html = html.replace('if(icon) { icon.style.display = display; icon.onclick = openOtherLocation; }', "if(icon) { icon.style.display = ''; icon.onclick = openOtherLocation; }")
 
-    html = ''.join(output)
-    html = html.replace("const display = show && otherLocationUrl ? '' : 'none';", "const display = '';")
-    html = html.replace('if(icon) { icon.style.display = display; icon.onclick = openOtherLocation; }', "if(icon) { icon.style.display = ''; icon.onclick = openOtherLocation; }")
+    html = html.replace('accept="image/png,image/jpeg,image/gif,image/webp"', 'accept="image/*"')
+    html = html.replace('accept="application/pdf,video/mp4,video/webm,video/quicktime"', 'accept="application/pdf,video/*"')
     return html
 
 
