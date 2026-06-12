@@ -2,6 +2,8 @@ import flask
 
 _original_make_response = flask.Flask.make_response
 
+STATUS_STYLE = '<style id="statusLinesPatch">#statusText{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:1.18!important}#statusText .sd{display:block!important;font-weight:700!important}#statusText .st{display:block!important;font-size:11px!important;opacity:.95!important}</style>'
+
 
 def _dedupe_map_button(html):
     if not isinstance(html, str):
@@ -28,7 +30,10 @@ def _dedupe_map_button(html):
         html = ''.join(output)
         html = html.replace("const display = show && otherLocationUrl ? '' : 'none';", "const display = '';")
         html = html.replace('if(icon) { icon.style.display = display; icon.onclick = openOtherLocation; }', "if(icon) { icon.style.display = ''; icon.onclick = openOtherLocation; }")
+        html = html.replace("setStatus(last.date, 'Son konum: ' + (loc.updated_at || last.time || ''), true, loc.url);", "setStatus('Son görülme: ' + last.date + (last.time ? ' ' + last.time : ''), 'Son konum: ' + (loc.updated_at || last.time || ''), true, loc.url);")
 
+    if 'statusLinesPatch' not in html:
+        html = html.replace('</head>', STATUS_STYLE + '</head>')
     html = html.replace('accept="image/png,image/jpeg,image/gif,image/webp"', 'accept="image/*"')
     html = html.replace('accept="application/pdf,video/mp4,video/webm,video/quicktime"', 'accept="application/pdf,video/*"')
     return html
