@@ -47,11 +47,12 @@ IMAGE_MIME_TYPES = {'image/png', 'image/jpeg', 'image/gif', 'image/webp'}
 VIDEO_MIME_TYPES = {'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'}
 DOC_MIME_TYPES = {'application/pdf'}
 ALLOWED_MIME_TYPES = IMAGE_MIME_TYPES | VIDEO_MIME_TYPES | DOC_MIME_TYPES
-MESSAGE_TYPES = {'text', 'image', 'file', 'video', 'location', 'live_location'}
+MESSAGE_TYPES = {'text', 'image', 'file', 'video', 'location'}
 
 ROOM = 'private_room'
 socketio = SocketIO(app, cors_allowed_origins=[], async_mode='eventlet')
 online_users = {}
+user_locations = {}
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 
@@ -246,39 +247,63 @@ def validate_code(code):
     if pin==USER2_CODE: return {'id':'user2','name':USER2_NAME}
     return None
 
+def get_public_locations():
+    return {uid: {**loc, 'url': f"https://maps.google.com/?q={loc['lat']},{loc['lng']}"} for uid, loc in user_locations.items()}
+
 def patch_chat_html(html, user):
     html = html.replace(
         '.stat{font-size:12px;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-        '.stat{font-size:12px;opacity:.95;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15}.stat .sd{font-weight:700}.stat .st{font-size:11px;opacity:.9}'
+        '.stat{font-size:12px;opacity:.95;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.15}.stat .sd{font-weight:700}.stat .st{font-size:11px;opacity:.9}.stat .mapbtn{margin-top:3px;border:0;border-radius:999px;background:#ffffff2b;color:white;padding:3px 9px;font-size:11px;font-weight:800}'
     )
     html = html.replace(
         '<div class="stat" id="statusText">Bağlanıyor...</div>',
-        '<div class="stat" id="statusText"><div class="sd">Bağlanıyor...</div><div class="st"></div></div>'
+        '<div class="stat" id="statusText"><div class="sd">Bağlanıyor...</div><div class="st"></div><button class="mapbtn" id="topMapBtn" type="button" style="display:none">📍 Konumu aç</button></div>'
     )
-    live_button = '<button class="at" onclick="startLiveLocation()">🛰️<small>8s Canlı</small></button>'
-    if 'startLiveLocation()' not in html:
-        html = html.replace('<button class="at" onclick="sendLocation()">📍<small>Konum</small></button>', '<button class="at" onclick="sendLocation()">📍<small>Konum</small></button>' + live_button)
     script = f'''
 <script>
 (function(){{
   const CURRENT_USER_ID = {user.get('id', '')!r};
-  const LIVE_LOCATION_HOURS = 8;
-  const LIVE_LOCATION_INTERVAL_MS = 60000;
-  const LIVE_LOCATION_TOTAL_MS = LIVE_LOCATION_HOURS * 60 * 60 * 1000;
-  let liveLocationWatchId = null;
-  let liveLocationTimerId = null;
+  let otherLocationUrl = '';
+  let locationWatchId = null;
   function splitLastSeen(value){{
     const raw = String(value || '').trim();
     const m = raw.match(/^(\d{{2}}\.\d{{2}}\.\d{{4}})\s+(\d{{2}}:\d{{2}})/);
     if(m) return {{date:m[1], time:m[2]}};
     return {{date:raw || 'Çevrimdışı', time:''}};
   }}
-  function setStatus(dateText, timeText){{
+  function updateTopMapButton(show, url){{
+    const btn = document.getElementById('topMapBtn');
+    if(!btn) return;
+    otherLocationUrl = url || '';
+    btn.style.display = show && otherLocationUrl ? 'inline-block' : 'none';
+  }}
+  function setStatus(dateText, timeText, showMapButton, mapUrl){{
     const el = document.getElementById('statusText');
     if(!el) return;
-    el.innerHTML = '<div class="sd"></div><div class="st"></div>';
+    el.innerHTML = '<div class="sd"></div><div class="st"></div><button class="mapbtn" id="topMapBtn" type="button" style="display:none">📍 Konumu aç</button>';
     el.querySelector('.sd').textContent = dateText || '';
     el.querySelector('.st').textContent = timeText || '';
+    const btn = document.getElementById('topMapBtn');
+    if(btn) btn.onclick = function(){{ if(otherLocationUrl) window.open(otherLocationUrl, '_blank', 'noopener'); }};
+    updateTopMapButton(showMapButton, mapUrl);
+  }}
+  function publishOwnLocation(){{
+    if(!navigator.geolocation) return;
+    if(locationWatchId !== null) return;
+    const sendPosition = (pos) => {{
+      const payload = {{
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy || null,
+        updated_at: new Date().toISOString()
+      }};
+      if(window.socket && typeof window.socket.emit === 'function') {{
+        window.socket.emit('user_location', payload);
+      }} else if(typeof socket !== 'undefined' && socket && typeof socket.emit === 'function') {{
+        socket.emit('user_location', payload);
+      }}
+    }};
+    locationWatchId = navigator.geolocation.watchPosition(sendPosition, function(){{}}, {{enableHighAccuracy:true, maximumAge:30000, timeout:20000}});
   }}
   function refreshTwoLineStatus(){{
     fetch('/api/status', {{cache:'no-store'}})
@@ -286,43 +311,21 @@ def patch_chat_html(html, user):
       .then(data => {{
         if(!data || !Array.isArray(data.users)) return;
         const online = Array.isArray(data.online) ? data.online : [];
+        const locations = data.locations || {{}};
         const other = data.users.find(u => u.id !== CURRENT_USER_ID) || data.users[0];
         if(!other) return;
-        if(online.some(u => u.id === other.id)) {{ setStatus('Çevrimiçi', ''); return; }}
+        const isOtherOnline = online.some(u => u.id === other.id);
+        const loc = locations[other.id];
+        if(isOtherOnline) {{
+          setStatus('Çevrimiçi', loc ? 'Konum hazır' : 'Konum bekleniyor', !!loc, loc ? loc.url : '');
+          publishOwnLocation();
+          return;
+        }}
         const last = splitLastSeen(other.last_seen || ((other.last_seen_date || '') + ' ' + (other.last_seen_time || '')));
-        setStatus(last.date, last.time);
+        setStatus(last.date, last.time, false, '');
       }})
       .catch(() => {{}});
   }}
-  window.startLiveLocation = function(){{
-    if(!navigator.geolocation) {{ alert('Bu cihazda konum desteklenmiyor.'); return; }}
-    if(liveLocationWatchId !== null) {{ alert('Canlı konum zaten aktif.'); return; }}
-    const startedAt = Date.now();
-    const expiresAt = startedAt + LIVE_LOCATION_TOTAL_MS;
-    const sendLivePoint = (pos) => {{
-      if(Date.now() > expiresAt) {{ window.stopLiveLocation && window.stopLiveLocation(true); return; }}
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      const accuracy = pos.coords.accuracy || null;
-      const mapsUrl = 'https://maps.google.com/?q=' + lat + ',' + lng;
-      const payload = {{lat,lng,accuracy,started_at:new Date(startedAt).toISOString(),expires_at:new Date(expiresAt).toISOString(),url:mapsUrl}};
-      if(window.socket && typeof window.socket.emit === 'function') {{
-        window.socket.emit('message', {{type:'live_location', text: JSON.stringify(payload)}});
-      }} else if(typeof socket !== 'undefined' && socket && typeof socket.emit === 'function') {{
-        socket.emit('message', {{type:'live_location', text: JSON.stringify(payload)}});
-      }}
-    }};
-    liveLocationWatchId = navigator.geolocation.watchPosition(sendLivePoint, err => alert('Konum alınamadı: ' + err.message), {{enableHighAccuracy:true, maximumAge:15000, timeout:20000}});
-    liveLocationTimerId = setTimeout(() => window.stopLiveLocation && window.stopLiveLocation(true), LIVE_LOCATION_TOTAL_MS);
-    alert('8 saat canlı konum paylaşımı başladı. Tarayıcı açık kaldığı sürece güncellenecek.');
-  }};
-  window.stopLiveLocation = function(expired){{
-    if(liveLocationWatchId !== null) navigator.geolocation.clearWatch(liveLocationWatchId);
-    liveLocationWatchId = null;
-    if(liveLocationTimerId) clearTimeout(liveLocationTimerId);
-    liveLocationTimerId = null;
-    if(expired) alert('Canlı konum paylaşımı sona erdi.');
-  }};
   refreshTwoLineStatus();
   setInterval(refreshTwoLineStatus, 7000);
 }})();
@@ -356,7 +359,7 @@ def api_messages():
 @app.route('/api/status')
 def api_status():
     if 'user' not in session: return jsonify({'error':'Yetkisiz'}),401
-    return jsonify({'users': load_users_status(), 'online': list(online_users.values())})
+    return jsonify({'users': load_users_status(), 'online': list(online_users.values()), 'locations': get_public_locations()})
 @app.route('/api/messages/<message_id>', methods=['DELETE'])
 @limiter.limit('30 per minute')
 def api_delete_message(message_id):
@@ -396,12 +399,29 @@ def upload_file():
 def on_join(data):
     if 'user' not in session: return
     user=session['user']; update_last_seen(user); join_room(ROOM); online_users[request.sid]=user
-    emit('user_status', {'user':user,'online':list(online_users.values()),'users':load_users_status(),'event':'joined'}, room=ROOM)
+    emit('user_status', {'user':user,'online':list(online_users.values()),'users':load_users_status(),'locations':get_public_locations(),'event':'joined'}, room=ROOM)
 @socketio.on('disconnect')
 def on_disconnect():
     if request.sid in online_users:
-        user=online_users.pop(request.sid); update_last_seen(user); leave_room(ROOM)
-        emit('user_status', {'user':user,'online':list(online_users.values()),'users':load_users_status(),'event':'left'}, room=ROOM)
+        user=online_users.pop(request.sid); user_locations.pop(user['id'], None); update_last_seen(user); leave_room(ROOM)
+        emit('user_status', {'user':user,'online':list(online_users.values()),'users':load_users_status(),'locations':get_public_locations(),'event':'left'}, room=ROOM)
+@socketio.on('user_location')
+def on_user_location(data):
+    if 'user' not in session or not isinstance(data, dict): return
+    try:
+        lat=float(data.get('lat'))
+        lng=float(data.get('lng'))
+    except (TypeError, ValueError):
+        return
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180): return
+    user=session['user']; update_last_seen(user)
+    user_locations[user['id']]={
+        'lat': round(lat, 7),
+        'lng': round(lng, 7),
+        'accuracy': data.get('accuracy'),
+        'updated_at': datetime.now(TIMEZONE).strftime('%H:%M')
+    }
+    emit('user_status', {'user':user,'online':list(online_users.values()),'users':load_users_status(),'locations':get_public_locations(),'event':'location'}, room=ROOM)
 @socketio.on('message')
 def on_message(data):
     if 'user' not in session or not isinstance(data, dict): return
