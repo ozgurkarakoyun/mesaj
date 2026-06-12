@@ -1,6 +1,6 @@
 # 🔐 PrivateMsg — İki Kişilik Özel Mesajlaşma
 
-Sadece 2 kişi için, özel kod ile giriş yapılan, WhatsApp benzeri tema, fotoğraf/kamera gönderimi, okundu bilgisi ve sesli/görüntülü arama destekli anlık mesajlaşma uygulaması.
+Sadece 2 kişi için, özel kod ile giriş yapılan, WhatsApp benzeri tema, fotoğraf/kamera gönderimi, okundu bilgisi, sesli/görüntülü arama ve çevrimiçi anlık konum gösterimi destekli özel mesajlaşma uygulaması.
 
 > Not: Uygulama HTTPS altında çalıştığında bağlantı taşıma katmanında korunur. Bu sürüm uçtan uca şifreleme (E2EE) yapmaz; mesajlar sunucu veritabanında düz metin olarak saklanır.
 
@@ -12,6 +12,9 @@ Sadece 2 kişi için, özel kod ile giriş yapılan, WhatsApp benzeri tema, foto
 - 🖼️ Galeriden fotoğraf gönderme, önizleme ve sohbet içinde görsel gösterimi
 - 📷 Kameradan fotoğraf çekip gönderme
 - 📎 PDF / MP4 dosya gönderme
+- 📍 Tek seferlik konum mesajı gönderme
+- 🟢 Karşı kişi çevrimiçiyken üst barda anlık konum butonu gösterme
+- 🗺️ Üst bardaki konum butonuyla Google Maps'te karşı kişinin konumunu açma
 - ✓✓ Mesaj okundu bilgisinde çift tik; okunduğunda mavi çift tik
 - 🎙️ Sesli arama (WebRTC)
 - 📹 WhatsApp benzeri tam ekran görüntülü arama arayüzü
@@ -24,17 +27,30 @@ Sadece 2 kişi için, özel kod ile giriş yapılan, WhatsApp benzeri tema, foto
 
 ## Fotoğraf ve Kamera Gönderme
 
-Sohbet ekranında üç medya butonu vardır:
+Sohbet ekranında medya butonları vardır:
 
 - `📷` Kamerayı açar, fotoğraf çeker ve gönderir.
 - `🖼️` Galeriden fotoğraf seçer. PNG, JPG, JPEG, GIF ve WEBP desteklenir.
 - `📎` Dosya gönderir. PDF ve MP4 desteklenir.
+- `📍` Tek seferlik konum mesajı gönderir.
 
 Galeriden fotoğraf seçildiğinde önce küçük bir önizleme görünür. Kullanıcı **Gönder** ile fotoğrafı gönderir veya **İptal** ile seçimi temizler.
 
-Kamera özelliği tarayıcı izni gerektirir. Mobilde arka/ön kamera geçişi için **Çevir** butonu eklenmiştir.
+Kamera ve konum özellikleri tarayıcı izni gerektirir. Mobilde arka/ön kamera geçişi için **Çevir** butonu eklenmiştir.
 
 Backend tarafında fotoğraflar özel olarak `/upload/photo` endpoint'i ile yüklenir. Yüklenen görseller sohbet içinde doğrudan görüntülenir ve tıklanınca büyütülür.
+
+---
+
+## Çevrimiçi Anlık Konum
+
+8 saatlik canlı konum paylaşımı kaldırılmıştır. Bunun yerine kullanıcılar çevrimiçiyken tarayıcı konum izni verirse son anlık konum geçici olarak bellekte tutulur.
+
+- Konum verisi kalıcı veritabanına yazılmaz.
+- Karşı kişi çevrimiçiyse üst barda `📍 Konumu aç` butonu görünür.
+- Butona basıldığında Google Maps yeni sekmede açılır.
+- Kullanıcı çevrimdışı olduğunda o kullanıcının geçici konumu bellekten silinir.
+- Konum izni verilmezse üst barda sadece çevrimiçi durumu görünür.
 
 ---
 
@@ -81,13 +97,13 @@ Railway dashboard → Projen → **Variables** sekmesi:
 | Değişken | Açıklama | Örnek |
 |----------|----------|-------|
 | `SECRET_KEY` | Flask secret key. Production'da zorunlu. | `kAB92xzT8mQpR...` |
-| `USER1_CODE` | 1. kişinin giriş kodu. Production'da zorunlu. | `OZG-2026` |
-| `USER2_CODE` | 2. kişinin giriş kodu. Production'da zorunlu. | `AYS-2026` |
+| `USER1_CODE` | 1. kişinin giriş kodu. Production'da zorunlu. | `1234` |
+| `USER2_CODE` | 2. kişinin giriş kodu. Production'da zorunlu. | `5678` |
 | `USER1_NAME` | 1. kişinin görünen adı | `Özgür` |
 | `USER2_NAME` | 2. kişinin görünen adı | `Kişi 2` |
 | `APP_TIMEZONE` | Saat dilimi | `Europe/Istanbul` |
 
-Güvenlik için `USER1_CODE` ve `USER2_CODE` uzun, tahmin edilemez ve birbirinden farklı olmalıdır.
+Güvenlik için `USER1_CODE` ve `USER2_CODE` farklı 4 haneli PIN olmalıdır.
 
 ### 5. Domain Al
 
@@ -103,7 +119,7 @@ python app.py
 # → http://localhost:5000
 ```
 
-Yerel geliştirme için varsayılan kodlar: `KARA-001` ve `KARA-002`.
+Yerel geliştirme için varsayılan kodlar: `1111` ve `2222`.
 
 Production ortamında bu varsayılan kodlar kullanılmaz; `USER1_CODE`, `USER2_CODE` ve `SECRET_KEY` tanımlanmadığında uygulama başlamaz.
 
@@ -112,6 +128,7 @@ Production ortamında bu varsayılan kodlar kullanılmaz; `USER1_CODE`, `USER2_C
 ## WebRTC / Güvenlik Notları
 
 - Sesli/görüntülü arama için **HTTPS zorunlu**. Railway otomatik HTTPS sağlar.
+- Konum özelliği için de modern tarayıcılarda HTTPS gerekir.
 - Medya stream'leri WebRTC ile peer-to-peer gitmeye çalışır.
 - Kodda STUN sunucuları vardır. Bazı mobil ağlar, kurumsal ağlar veya sıkı NAT ortamlarında arama için TURN sunucusu gerekebilir.
 - Fotoğraflar Railway'in `/static/uploads/` klasörüne kaydedilir.
